@@ -12,7 +12,6 @@ from smartscroll.routes import chat, feed, health, pdfs
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     """Application lifespan handler for startup/shutdown."""
-    # TODO: Initialize logging, validate config
     yield
 
 
@@ -27,7 +26,10 @@ def create_app() -> FastAPI:
 
     app.add_middleware(
         CORSMiddleware,
-        allow_origins=["http://localhost:3000"],
+        allow_origins=[
+            "http://localhost:3000",  # Next.js / legacy
+            "http://localhost:5173",  # Vite dev server
+        ],
         allow_credentials=True,
         allow_methods=["*"],
         allow_headers=["*"],
@@ -36,7 +38,7 @@ def create_app() -> FastAPI:
     app.include_router(health.router, tags=["health"])
     app.include_router(pdfs.router, prefix="/api/pdfs", tags=["pdfs"])
     app.include_router(feed.router, prefix="/api/feed", tags=["feed"])
-app.include_router(chat.router, prefix="/api/chat", tags=["chat"])
+    app.include_router(chat.router, prefix="/api/chat", tags=["chat"])
 
     return app
 

@@ -1,11 +1,14 @@
 import { useState, useRef } from 'react'
+import { uploadPdf, getPdf } from '../api/client'
 import './UploadPanel.css'
 
 export default function UploadPanel({ onGenerate }) {
-  const [mode, setMode] = useState('pdf')     // 'pdf' | 'text'
+  const [mode, setMode] = useState('pdf')
   const [pdfFile, setPdfFile] = useState(null)
   const [text, setText] = useState('')
   const [loading, setLoading] = useState(false)
+  const [loadingMsg, setLoadingMsg] = useState('')
+  const [error, setError] = useState(null)
   const [dragOver, setDragOver] = useState(false)
   const fileInputRef = useRef(null)
 
@@ -13,22 +16,47 @@ export default function UploadPanel({ onGenerate }) {
 
   function handleFileChange(e) {
     const file = e.target.files[0]
-    if (file?.type === 'application/pdf') setPdfFile(file)
+    if (file?.type === 'application/pdf') { setPdfFile(file); setError(null) }
   }
 
   function handleDrop(e) {
     e.preventDefault()
     setDragOver(false)
     const file = e.dataTransfer.files[0]
-    if (file?.type === 'application/pdf') setPdfFile(file)
+    if (file?.type === 'application/pdf') { setPdfFile(file); setError(null) }
   }
 
   async function handleGenerate() {
     if (!isValid || loading) return
+    setError(null)
     setLoading(true)
-    await new Promise((r) => setTimeout(r, 1000))
-    setLoading(false)
-    onGenerate()
+
+    if (mode === 'pdf') {
+      try {
+        setLoadingMsg('Uploading…')
+        const { pdf_id } = await uploadPdf(pdfFile)
+
+        setLoadingMsg('Processing your PDF… this may take a minute')
+        const deadline = Date.now() + 300_000
+        while (Date.now() < deadline) {
+          await new Promise(r => setTimeout(r, 3000))
+          const pdf = await getPdf(pdf_id)
+          if (pdf.status === 'ready') { onGenerate(pdf_id); return }
+          if (pdf.status === 'failed') throw new Error(pdf.error_message || 'Processing failed')
+        }
+        throw new Error('Processing timed out — check back soon')
+      } catch (err) {
+        setError(err.message)
+      } finally {
+        setLoading(false)
+        setLoadingMsg('')
+      }
+    } else {
+      // Text mode has no backend endpoint yet
+      await new Promise(r => setTimeout(r, 800))
+      setLoading(false)
+      onGenerate(null)
+    }
   }
 
   return (
@@ -112,7 +140,10 @@ export default function UploadPanel({ onGenerate }) {
         </div>
       )}
 
-      {/* Generate button — stays at the bottom */}
+      {/* Error message */}
+      {error && <p className="up-error">{error}</p>}
+
+      {/* Generate button */}
       <div className="up-generate-wrap">
         <button
           className={`up-generate ${isValid ? 'up-generate--active' : ''}`}
@@ -122,7 +153,7 @@ export default function UploadPanel({ onGenerate }) {
           {loading ? (
             <span className="up-btn-loading">
               <span className="up-spinner" />
-              Generating…
+              {loadingMsg || 'Generating…'}
             </span>
           ) : (
             'Generate Smart Feed'
@@ -146,10 +177,8 @@ function UploadArrow() {
 function PdfIcon() {
   return (
     <svg className="up-mode-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-      {/* Document outline with folded corner */}
       <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
       <polyline points="14 2 14 8 20 8" />
-      {/* Text lines inside */}
       <line x1="8" y1="13" x2="16" y2="13" />
       <line x1="8" y1="17" x2="13" y2="17" />
     </svg>
@@ -159,7 +188,6 @@ function PdfIcon() {
 function TextIcon() {
   return (
     <svg className="up-mode-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-      {/* Pencil body */}
       <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
       <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" />
     </svg>

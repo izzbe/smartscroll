@@ -5,6 +5,7 @@ This is the main entry point for processing a PDF into a video.
 """
 
 import asyncio
+import json
 import tempfile
 import uuid
 from dataclasses import dataclass
@@ -189,7 +190,15 @@ async def process_pdf(
         )
         log.info("audio_uploaded", gcs_path=narration_gcs_path)
 
-        # Step 6: Render video (gameplay + narration + captions → MP4)
+        # Step 5b: Save word timings JSON (allows cheap re-render without re-running TTS)
+        log.info("step_5b_uploading_timings")
+        timings_data = [
+            {"word": t.word, "start": t.start_time, "end": t.end_time}
+            for t in tts_result.word_timings
+        ]
+        await upload_text_to_gcs(storage, json.dumps(timings_data), f"{uid}/{pdf_id}/timings.json")
+
+        # Step 6: Render video (gameplay + narration + captions → MP4, no title overlay)
         log.info("step_6_rendering_video")
         video_gcs_path = await render_video(
             uid=uid,
@@ -197,7 +206,6 @@ async def process_pdf(
             narration_audio=tts_result.audio,
             word_timings=tts_result.word_timings,
             duration_ms=tts_result.duration_ms,
-            video_caption=video_caption,
         )
         log.info("video_rendered", gcs_path=video_gcs_path)
 

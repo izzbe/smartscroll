@@ -1,7 +1,6 @@
 """Video feed endpoints."""
 
 import base64
-import hashlib
 import math
 from datetime import datetime, timezone
 
@@ -26,6 +25,7 @@ class FeedVideo(BaseModel):
     video_url: str
     duration_ms: int
     video_caption: str
+    script: str
     created_at: datetime
 
 
@@ -43,10 +43,6 @@ def _recency_score(created_at: datetime, now: datetime) -> float:
     age_s = max(0.0, (now - created_at).total_seconds())
     return math.exp(-math.log(2) * age_s / HALF_LIFE_SECONDS)
 
-
-def _bucket_key(video_id: str, uid: str) -> str:
-    """Deterministic shuffle key within a score bucket."""
-    return hashlib.sha256(f"{uid}:{video_id}".encode()).hexdigest()
 
 
 def _encode_cursor(offset: int) -> str:
@@ -80,8 +76,8 @@ async def get_feed(
         for vid_id, v in ready_videos
     ]
 
-    # Descending score bucket (rounded to 0.1), deterministic shuffle within bucket
-    scored.sort(key=lambda t: (-round(t[0], 1), _bucket_key(t[1], uid)))
+    # Descending score bucket (rounded to 0.1), newest-first within bucket
+    scored.sort(key=lambda t: (-round(t[0], 1), -t[2].created_at.timestamp()))
 
     offset = _decode_cursor(cursor) if cursor else 0
     page = scored[offset : offset + PAGE_SIZE]
@@ -99,6 +95,7 @@ async def get_feed(
                 video_url=signed_url,
                 duration_ms=video.duration_ms,
                 video_caption=video.video_caption,
+                script=video.script,
                 created_at=video.created_at,
             )
         )

@@ -112,6 +112,16 @@ class StorageService:
         )
         return url
 
+    async def download_blob_bytes(self, gcs_uri: str) -> bytes:
+        """Download a blob from any GCS URI as raw bytes."""
+        if not gcs_uri.startswith("gs://"):
+            raise ValueError(f"Invalid GCS URI: {gcs_uri}")
+        without_scheme = gcs_uri[len("gs://"):]
+        bucket_name, _, blob_path = without_scheme.partition("/")
+        blob = self.client.bucket(bucket_name).blob(blob_path)
+        loop = asyncio.get_event_loop()
+        return await loop.run_in_executor(None, blob.download_as_bytes)
+
     async def download_blob_text(self, gcs_uri: str) -> str:
         """Download a text blob from any GCS URI (gs://bucket/path).
 

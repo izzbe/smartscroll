@@ -1,29 +1,30 @@
 import { useState, useEffect, useRef } from 'react'
 import { createPortal } from 'react-dom'
+import { sendChat } from '../api/client'
 import './CommentDrawer.css'
 
 const INITIAL_MESSAGES = [
   {
     id: 0,
     role: 'gemma',
-    text: "Hey! I'm Gemma. Ask me anything about this topic and I'll break it down for you. 🧠",
+    text: "Hey! I'm Gemma. Ask me anything about this topic and I'll break it down for you.",
   },
 ]
 
-export default function CommentDrawer({ topic, onClose }) {
+export default function CommentDrawer({ topic, pdfId, onClose }) {
   const [messages, setMessages] = useState(INITIAL_MESSAGES)
+  const [history, setHistory]   = useState([]) // {role, content} for multi-turn API
   const [input, setInput]       = useState('')
+  const [sending, setSending]   = useState(false)
   const [visible, setVisible]   = useState(false)
   const bottomRef = useRef(null)
   const inputRef  = useRef(null)
 
-  // Trigger slide-in on mount
   useEffect(() => {
     const id = requestAnimationFrame(() => setVisible(true))
     return () => cancelAnimationFrame(id)
   }, [])
 
-  // Scroll to bottom when new messages arrive
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [messages])
@@ -33,26 +34,45 @@ export default function CommentDrawer({ topic, onClose }) {
     setTimeout(onClose, 300)
   }
 
-  function handleSend(e) {
+  async function handleSend(e) {
     e.preventDefault()
     const text = input.trim()
-    if (!text) return
+    if (!text || sending) return
 
-    const userMsg = { id: Date.now(), role: 'user', text }
-    // Placeholder Gemma reply — will be real once backend is wired up
-    const gemmaMsg = {
-      id: Date.now() + 1,
-      role: 'gemma',
-      text: `Great question! Once I'm connected to the backend, I'll give you a full explanation about "${topic}". For now — keep the curiosity going! 🚀`,
-    }
-
-    setMessages(prev => [...prev, userMsg, gemmaMsg])
+    setMessages(prev => [...prev, { id: Date.now(), role: 'user', text }])
     setInput('')
-    inputRef.current?.focus()
+    setSending(true)
+
+    try {
+      if (pdfId) {
+        const { reply } = await sendChat(pdfId, text, history)
+        setHistory(prev => [
+          ...prev,
+          { role: 'user', content: text },
+          { role: 'assistant', content: reply },
+        ])
+        setMessages(prev => [...prev, { id: Date.now(), role: 'gemma', text: reply }])
+      } else {
+        setMessages(prev => [
+          ...prev,
+          {
+            id: Date.now(),
+            role: 'gemma',
+            text: `Great question about "${topic}"! Upload a PDF to get real AI answers about its content.`,
+          },
+        ])
+      }
+    } catch {
+      setMessages(prev => [
+        ...prev,
+        { id: Date.now(), role: 'gemma', text: 'Sorry, something went wrong. Try again!' },
+      ])
+    } finally {
+      setSending(false)
+      inputRef.current?.focus()
+    }
   }
 
-  // Render into document.body so position:fixed is relative to the viewport,
-  // not the transformed .shell-slides-track ancestor.
   return createPortal(
     <div
       className={`cd-overlay ${visible ? 'cd-overlay--in' : ''}`}
@@ -62,10 +82,8 @@ export default function CommentDrawer({ topic, onClose }) {
         className={`cd-panel ${visible ? 'cd-panel--in' : ''}`}
         onClick={e => e.stopPropagation()}
       >
-        {/* Drag handle */}
         <div className="cd-handle" />
 
-        {/* Header */}
         <div className="cd-header">
           <div className="cd-header-left">
             <div className="cd-gemma-badge">G</div>
@@ -79,7 +97,6 @@ export default function CommentDrawer({ topic, onClose }) {
           </button>
         </div>
 
-        {/* Message thread */}
         <div className="cd-messages">
           {messages.map(msg => (
             <div key={msg.id} className={`cd-row cd-row--${msg.role}`}>
@@ -91,10 +108,17 @@ export default function CommentDrawer({ topic, onClose }) {
               </div>
             </div>
           ))}
+          {sending && (
+            <div className="cd-row cd-row--gemma">
+              <div className="cd-gemma-dot">G</div>
+              <div className="cd-bubble cd-bubble--gemma cd-bubble--thinking">
+                <span className="cd-dot" /><span className="cd-dot" /><span className="cd-dot" />
+              </div>
+            </div>
+          )}
           <div ref={bottomRef} />
         </div>
 
-        {/* Input row */}
         <form className="cd-input-row" onSubmit={handleSend}>
           <input
             ref={inputRef}
@@ -103,11 +127,12 @@ export default function CommentDrawer({ topic, onClose }) {
             onChange={e => setInput(e.target.value)}
             placeholder={`Ask about ${topic}…`}
             autoComplete="off"
+            disabled={sending}
           />
           <button
-            className={`cd-send-btn ${input.trim() ? 'cd-send-btn--active' : ''}`}
+            className={`cd-send-btn ${input.trim() && !sending ? 'cd-send-btn--active' : ''}`}
             type="submit"
-            disabled={!input.trim()}
+            disabled={!input.trim() || sending}
             aria-label="Send"
           >
             <SendIcon />

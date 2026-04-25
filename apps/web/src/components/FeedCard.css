@@ -3,7 +3,6 @@
   position: relative;
   width: 100%;
   height: 100%; /* fills one snap unit of the SmartFeed scroll container */
-  scroll-snap-align: start;
   overflow: hidden;
   display: flex;
   align-items: flex-end;

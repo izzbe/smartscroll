@@ -1,9 +1,12 @@
 .sf-scroll {
   height: 100%;
   overflow-y: scroll;
-  scroll-snap-type: y mandatory;
-  -webkit-overflow-scrolling: touch;
+  overflow-x: hidden;
   scrollbar-width: none;
+  -webkit-overflow-scrolling: touch;
+  touch-action: none;        /* we own all pointer input */
+  user-select: none;
+  -webkit-user-select: none;
 }
 
 .sf-scroll::-webkit-scrollbar {

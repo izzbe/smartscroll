@@ -44,6 +44,8 @@ class Video(BaseModel):
     script: str = ""
     script_prompt_version: int = 0
     word_count: int = 0
+    extracted_text_gcs_path: str = ""
+    video_caption: str = ""
     created_at: datetime = Field(default_factory=datetime.utcnow)
     view_count: int = 0
     total_watch_ms: int = 0

@@ -204,6 +204,134 @@ async def _call_deployed_endpoint(prompt: str) -> str:
     raise ValueError("Empty response from endpoint")
 
 
+CHAT_SYSTEM = """\
+You are a knowledgeable AI commenter on a TikTok-style educational video. \
+The video was generated from the following PDF content:
+
+{pdf_text}
+
+You have fully read this document. Answer viewer questions in a casual, conversational style \
+(like a helpful TikTok comment). Keep replies to 2-4 sentences. Use plain text only — no markdown, \
+no bullet points. You can reference specific details from the document. If asked something the \
+document doesn't cover, say so briefly but try to help.\
+"""
+
+
+async def _call_maas_chat(
+    system_prompt: str,
+    history: list[dict],
+    model_name: str,
+) -> str:
+    """Call MaaS model with a multi-turn conversation.
+
+    history: list of {"role": "user"|"model", "parts": [{"text": "..."}]}
+    The system prompt is prepended to the first user turn.
+    """
+    settings = get_settings()
+    credentials = _get_credentials()
+
+    if credentials.expired:
+        credentials.refresh(Request())
+
+    url = (
+        f"https://aiplatform.googleapis.com/v1/projects/{settings.gcp_project_id}"
+        f"/locations/global/publishers/google/models/{model_name.split('/')[-1]}"
+        f":generateContent"
+    )
+
+    headers = {
+        "Authorization": f"Bearer {credentials.token}",
+        "Content-Type": "application/json",
+    }
+
+    # Inject system prompt into the first user turn
+    contents = []
+    for i, turn in enumerate(history):
+        if i == 0 and turn["role"] == "user":
+            text = f"{system_prompt}\n\n{turn['parts'][0]['text']}"
+            contents.append({"role": "user", "parts": [{"text": text}]})
+        else:
+            contents.append(turn)
+
+    payload = {
+        "contents": contents,
+        "generationConfig": {
+            "maxOutputTokens": 512,
+            "temperature": 0.8,
+            "topP": 0.9,
+        },
+    }
+
+    async with httpx.AsyncClient(timeout=60.0) as client:
+        response = await client.post(url, headers=headers, json=payload)
+
+    if response.status_code != 200:
+        logger.error(
+            "maas_chat_error",
+            status_code=response.status_code,
+            response=response.text[:500],
+        )
+        response.raise_for_status()
+
+    data = response.json()
+    candidates = data.get("candidates", [])
+    if not candidates:
+        raise ValueError("No candidates in MaaS chat response")
+    parts = candidates[0].get("content", {}).get("parts", [])
+    if not parts:
+        raise ValueError("No content parts in MaaS chat response")
+    return parts[0].get("text", "").strip()
+
+
+async def chat_with_pdf_context(
+    pdf_text: str,
+    message: str,
+    history: list[dict],
+    pdf_id: str,
+) -> str:
+    """Chat with Gemma using the full extracted PDF text as context.
+
+    Args:
+        pdf_text: Raw text extracted from the PDF.
+        message: The user's current message.
+        history: Prior turns as [{"role": "user"|"model", "content": "..."}].
+        pdf_id: PDF ID for logging.
+
+    Returns:
+        Gemma's reply as a plain string.
+    """
+    settings = get_settings()
+    log = logger.bind(pdf_id=pdf_id, step="chat")
+    log.info("chat_request", message_len=len(message), history_turns=len(history))
+
+    system_prompt = CHAT_SYSTEM.format(pdf_text=pdf_text)
+
+    # Build contents array for MaaS multi-turn format
+    contents: list[dict] = []
+    for turn in history:
+        role = "model" if turn["role"] == "assistant" else "user"
+        contents.append({"role": role, "parts": [{"text": turn["content"]}]})
+    contents.append({"role": "user", "parts": [{"text": message}]})
+
+    endpoint_value = settings.vertex_gemma_endpoint or DEFAULT_GEMMA_MODEL
+    if _is_maas_model(endpoint_value):
+        reply = await _call_maas_chat(system_prompt, contents, endpoint_value)
+    else:
+        # Fallback: flatten history into a single prompt for non-MaaS models
+        flat_history = "\n".join(
+            f"{'User' if t['role'] == 'user' else 'Assistant'}: {t['parts'][0]['text']}"
+            for t in contents[:-1]
+        )
+        prompt = f"{system_prompt}\n\n{flat_history}\nUser: {message}"
+        if _is_endpoint_id(endpoint_value):
+            reply = await _call_deployed_endpoint(prompt)
+        else:
+            reply = await _call_serverless_model(prompt)
+
+    log.info("chat_reply", reply_len=len(reply))
+    return reply
+
+
 async def rewrite_pdf_to_script(
     pdf_text: str,
     pdf_id: str,
@@ -247,6 +375,43 @@ async def rewrite_pdf_to_script(
     )
 
     return script, SCRIPT_PROMPT_V
+
+
+CAPTION_PROMPT = """\
+Write a single punchy TikTok-style caption for this video script. \
+Rules: max 12 words, no punctuation at the end, no emojis, plain ASCII only, sentence case. \
+Output ONLY the caption text — nothing else.
+
+Script:
+{script}
+"""
+
+
+async def generate_video_caption(script: str, pdf_id: str) -> str:
+    """Generate a short punchy title caption for the video using Gemma.
+
+    Returns a single line of ≤12 words suitable for burning into the video.
+    """
+    settings = get_settings()
+    log = logger.bind(pdf_id=pdf_id, step="caption_gen")
+    log.info("generating_caption")
+
+    prompt = CAPTION_PROMPT.format(script=script[:3000])  # cap context to keep it fast
+
+    endpoint_value = settings.vertex_gemma_endpoint or DEFAULT_GEMMA_MODEL
+    if _is_endpoint_id(endpoint_value):
+        raw = await _call_deployed_endpoint(prompt)
+    elif _is_maas_model(endpoint_value):
+        raw = await _call_maas_model(prompt, endpoint_value)
+    else:
+        raw = await _call_serverless_model(prompt)
+
+    # Take only the first line, strip punctuation, and hard-cap at 80 chars
+    caption = raw.splitlines()[0].strip().rstrip(".,!?;:")
+    caption = caption[:80]
+
+    log.info("caption_generated", caption=caption)
+    return caption
 
 
 async def check_vertex_connection() -> bool:

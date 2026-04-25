@@ -23,7 +23,7 @@ These are fixed. Do not propose alternatives unless explicitly asked.
 - **Frontend**: Next.js 15 (App Router) + Tailwind. Deployed on Cloud Run.
 - **DB**: Firestore for app data (users, pdfs, chunks, videos). BigQuery for analytics events only (views, skips, watch_ms).
 - **Auth**: Firebase Auth (email/password to satisfy the spec, with Google OAuth as a freebie).
-- **Object storage**: GCS — buckets `smartscroll-pdfs`, `smartscroll-gameplay`, `smartscroll-rendered`.
+- **Object storage**: GCS — buckets `smartscroll_pdfs`, `smartscroll-gameplay`, `smartscroll-rendered`.
 - **Job runner**: FastAPI `BackgroundTasks` for the hackathon. Cloud Tasks + a separate Cloud Run worker is the upgrade path; do NOT build that now.
 - **Transcription/timestamps**: `faster-whisper` (large-v3) running in the API container. Word-level timestamps required.
 - **Video muxing**: FFmpeg via `ffmpeg-python`. Captions burned in via `subtitles` filter from a generated `.ass` file.
@@ -166,7 +166,7 @@ All secrets live in `.env` locally and Secret Manager in prod. **Never hardcode,
 # GCP
 GCP_PROJECT_ID=
 GCP_REGION=us-central1
-GCS_BUCKET_PDFS=smartscroll-pdfs
+GCS_BUCKET_PDFS=smartscroll_pdfs
 GCS_BUCKET_GAMEPLAY=smartscroll-gameplay
 GCS_BUCKET_RENDERED=smartscroll-rendered
 GOOGLE_APPLICATION_CREDENTIALS=./gcp-sa.json   # local only
@@ -193,10 +193,11 @@ ELEVENLABS_VOICE_ID=              # default narrator voice
 ## 8. Local dev
 
 ```bash
-# Backend
-cd apps/api
+# Install Python deps (from repo root — pyproject.toml is at root level)
 uv sync
-uv run uvicorn smartscroll.main:app --reload --port 8000
+
+# Run API server
+GOOGLE_APPLICATION_CREDENTIALS=./gcp-sa.json uv run uvicorn smartscroll.main:app --reload --port 8000
 
 # Frontend
 cd apps/web
@@ -253,106 +254,271 @@ Use **uv** for Python (not pip, not poetry). Use **pnpm** for JS (not npm). Don'
 - **If a step takes >30 min to figure out, ask the team.** Don't burn an hour on IAM.
 - **Show, don't perfect.** A demo where 80% works and 20% is hardcoded beats one where everything is real but the script LLM is still being prompt-engineered at 3am.
 
-# Ingestion module — implementation notes
+---
 
-> Implemented in `src/smartscroll/ingestion.py`. Tests in `tests/test_ingestion.py`.
+## 13. Implementation status
 
-## What was built
+### Completed
+- [x] **PDF upload to GCS** — `POST /api/pdfs/upload` uploads to `gs://smartscroll_pdfs/{uid}/{pdf_id}/{filename}`
+- [x] **Firestore persistence** — PDFs stored in `users/{uid}/pdfs/{pdfId}`, database ID: `smartscroll`
+- [x] **List PDFs** — `GET /api/pdfs` returns all PDFs for current user
+- [x] **Get PDF** — `GET /api/pdfs/{pdf_id}` returns single PDF with status
 
-The semantic PDF chunker — step [1] and [2] of the pipeline (§3). It is a standalone module that takes a PDF path and returns a list of `SmartChunk` objects ready for the script-rewriting step.
+### In progress
+- [ ] PDF text extraction (PyMuPDF)
+- [ ] Semantic chunking
+- [ ] Gemma 4 script rewriting — service created at `services/vertex.py`, needs GCP endpoint
 
-### Dependencies added
+### Not started
+- [ ] ElevenLabs TTS
+- [ ] Whisper word timestamps
+- [ ] FFmpeg video rendering
+- [ ] Feed endpoint
+- [ ] Frontend
 
-| Package | Purpose |
-|---|---|
-| `sentence-transformers` | Loads `all-MiniLM-L6-v2` to embed paragraphs into meaning vectors |
-| `scikit-learn` | Cosine similarity between embedding vectors |
-| `pytest` (dev) | Test runner — run via `uv run python -m pytest` |
+---
 
-### Pipeline (inside ingestion.py)
+## 14. API reference
 
+Base URL: `http://localhost:8000`
+
+### Health
+
+| Method | Path | Description |
+|--------|------|-------------|
+| GET | `/health` | Returns `{"status": "healthy"}` |
+
+### PDFs
+
+| Method | Path | Description |
+|--------|------|-------------|
+| GET | `/api/pdfs` | List all PDFs for current user |
+| GET | `/api/pdfs/{pdf_id}` | Get single PDF by ID |
+| POST | `/api/pdfs/upload` | Upload a PDF file |
+
+#### `GET /api/pdfs`
+
+List all PDFs for the current user from Firestore.
+
+**Response:**
+```json
+{
+  "uid": "user_demo_123",
+  "pdfs": [
+    {
+      "pdf_id": "312325125f42470982144db2108f7acb",
+      "filename": "deep_vol.pdf",
+      "gcs_path": "gs://smartscroll_pdfs/user_demo_123/.../deep_vol.pdf",
+      "status": "uploading",
+      "chunk_count": 0,
+      "error_message": null
+    }
+  ]
+}
 ```
-PDF path
-  └─> extract_pdf_content()     # PyMuPDF: raw text + images, page by page
-  └─> split_into_paragraphs()   # clean text, drop fragments < 40 chars
-  └─> create_semantic_chunks()  # embed paragraphs → group by cosine similarity
-  └─> list[SmartChunk]
-```
 
-### Key design decisions
-
-- **Embedding model**: `all-MiniLM-L6-v2` (~80 MB, CPU-friendly). Loaded once at module level — not per call.
-- **Similarity threshold**: `0.55` default. Lower = bigger chunks. Higher = more, smaller chunks.
-- **Max chunk chars**: `1800` hard ceiling. Prevents runaway merges even when similarity is high.
-- **Image handling**: `describe_image(image_bytes)` is a placeholder stub. Swap its body for any vision API (OpenAI, Gemini, Claude). Signature must stay `(bytes) -> str`.
-
-### SmartChunk dataclass
-
-```python
-@dataclass
-class SmartChunk:
-    chunk_id: int
-    page_start: int
-    page_end: int
-    text: str
-    image_descriptions: list[str]
-    source_file: str
-```
-
-### Note on §3.1 (semantic chunking spec)
-
-§3.1 describes a heading/word-count greedy approach with LLM fallbacks. What is implemented uses sentence-embedding cosine similarity instead. The embedding approach was chosen for the MVP because it requires no LLM calls and handles PDFs without clear heading structure. The two approaches can be swapped or combined later — the public interface (`chunk_pdf_semantically(pdf_path)`) stays the same either way.
-
-## Running ingestion locally
-
+**Test:**
 ```bash
-# CLI — prints chunks to stdout
-uv run python src/smartscroll/ingestion.py path/to/paper.pdf
-
-# Tests — 38 unit tests, no external PDF needed
-uv run python -m pytest tests/test_ingestion.py -v
+curl http://localhost:8000/api/pdfs
 ```
 
-## Known gotcha — PyMuPDF exception type
+#### `GET /api/pdfs/{pdf_id}`
 
-`fitz.FileNotFoundError` is NOT a subclass of Python's built-in `FileNotFoundError`. Always catch both:
+Get a single PDF by ID.
 
-```python
-except (FileNotFoundError, fitz.FileNotFoundError):
-    raise FileNotFoundError(...)
+**Response:**
+```json
+{
+  "pdf_id": "312325125f42470982144db2108f7acb",
+  "filename": "deep_vol.pdf",
+  "gcs_path": "gs://smartscroll_pdfs/user_demo_123/.../deep_vol.pdf",
+  "status": "uploading",
+  "chunk_count": 0,
+  "error_message": null
+}
+```
+
+**Errors:**
+- `404` — PDF not found
+
+**Test:**
+```bash
+curl http://localhost:8000/api/pdfs/{pdf_id}
+```
+
+#### `POST /api/pdfs/upload`
+
+Upload a PDF to GCS and create Firestore record. Associates with current user (dummy `user_demo_123` for now).
+
+**Request:**
+```
+Content-Type: multipart/form-data
+file: <pdf file>
+```
+
+**Response:**
+```json
+{
+  "pdf_id": "312325125f42470982144db2108f7acb",
+  "uid": "user_demo_123",
+  "gcs_uri": "gs://smartscroll_pdfs/user_demo_123/.../deep_vol.pdf",
+  "filename": "deep_vol.pdf",
+  "status": "uploading"
+}
+```
+
+**Errors:**
+- `400` — Not a PDF, file too large (>50MB), or empty file
+
+**Test:**
+```bash
+curl -X POST http://localhost:8000/api/pdfs/upload -F "file=@temp/deep_vol.pdf"
+```
+
+### Feed (TODO)
+
+| Method | Path | Description |
+|--------|------|-------------|
+| GET | `/api/feed` | Get paginated video feed |
+
+### Events (TODO)
+
+| Method | Path | Description |
+|--------|------|-------------|
+| POST | `/api/events` | Log view/complete events |
+
+---
+
+## 15. Project structure
+
+```
+smartscroll/
+├── pyproject.toml              # Root — all Python deps here
+├── apps/api/smartscroll/
+│   ├── main.py                 # FastAPI app entry
+│   ├── config.py               # Settings from env vars
+│   ├── models/
+│   │   └── firestore.py        # ✅ Pydantic models (User, PDF, Chunk, Video)
+│   ├── pipeline/               # Processing steps (TODO)
+│   ├── prompts/
+│   │   └── script_rewrite.py   # Gemma prompt (v1)
+│   ├── routes/
+│   │   ├── health.py           # ✅ Working
+│   │   ├── pdfs.py             # ✅ Upload, list, get working
+│   │   ├── feed.py             # TODO
+│   │   └── events.py           # TODO
+│   └── services/
+│       ├── auth.py             # ✅ Dummy user for now
+│       ├── firestore.py        # ✅ Firestore CRUD operations
+│       └── storage.py          # ✅ GCS upload working
+├── apps/web/                   # Next.js (empty)
+├── packages/shared/            # Shared Pydantic models
+├── scripts/
+│   ├── pipeline_local.py       # Debug pipeline locally
+│   └── seed_gameplay.py        # Seed GCS with gameplay clips
+├── docs/
+│   └── data-model.md           # Firestore schema documentation
+├── infra/
+├── temp/                       # Test files (gitignored)
+│   └── deep_vol.pdf            # Test PDF
+├── gcp-sa.json                 # GCP service account (gitignored)
+└── .env.example
 ```
 
 ---
 
-# Field notes
+## 16. Local dev
 
-  smartscroll/                                                                                                                                                                        ├── apps/api/
-  │   ├── pyproject.toml          # FastAPI dependencies                                                                                                                            
-  │   └── smartscroll/                                                                                                                                                            
-  │       ├── main.py             # FastAPI app entry
-  │       ├── models/             # Pydantic models (TODO)
-  │       ├── pipeline/           # chunk, script, tts, caption, render (TODO)
-  │       ├── prompts/
-  │       │   └── script_rewrite.py   # Gemma prompt template
-  │       ├── routes/
-  │       │   ├── health.py       # /health endpoint (working)
-  │       │   ├── pdfs.py         # /api/pdfs (TODO)
-  │       │   ├── feed.py         # /api/feed (TODO)
-  │       │   └── events.py       # /api/events (TODO)
-  │       └── services/           # firestore, storage, auth, tts (TODO)
-  ├── apps/web/                   # Next.js (empty)
-  ├── packages/shared/            # Shared Pydantic models
-  ├── scripts/
-  │   ├── pipeline_local.py       # Debug pipeline locally
-  │   └── seed_gameplay.py        # Seed GCS with gameplay clips
-  ├── infra/
-  │   ├── terraform/
-  │   └── docker/
-  ├── .env.example
-  └── pyproject.toml              # uv workspace root
+```bash
+# Install deps (from repo root)
+uv sync
 
-  To install dependencies and run:
-  cd apps/api
-  uv sync
-  uv run uvicorn smartscroll.main:app --reload --port 8000
+# Run API server
+GOOGLE_APPLICATION_CREDENTIALS=./gcp-sa.json uv run uvicorn smartscroll.main:app --reload --port 8000
+
+# Test PDF upload
+curl -X POST http://localhost:8000/api/pdfs/upload -F "file=@temp/deep_vol.pdf"
+
+# List PDFs
+curl http://localhost:8000/api/pdfs
+```
+
+---
+
+## 17. Firestore setup
+
+**Database ID:** `smartscroll` (not the default)
+
+**Location:** `us-central1`
+
+**Mode:** Native mode (not Datastore, not MongoDB compatibility)
+
+**Security rules:** Open (for hackathon — API server uses service account which bypasses rules)
+
+**Collections:**
+- `users/{uid}` — User profiles
+- `users/{uid}/pdfs/{pdfId}` — PDF metadata and status
+- `users/{uid}/pdfs/{pdfId}/chunks/{chunkId}` — Processed chunks
+- `videos/{videoId}` — Denormalized videos for feed (top-level for fast queries)
+
+See `docs/data-model.md` for full schema.
+
+**Create database (if needed):**
+```bash
+gcloud firestore databases create --location=us-central1 --database=smartscroll
+```
+
+---
+
+## 18. Vertex AI setup
+
+**Service file:** `apps/api/smartscroll/services/vertex.py`
+
+**Two options for Gemma:**
+
+### Option A: Serverless Model Garden (recommended)
+Use `gemma-4-26b-a4b-it-maas` (Gemma 4, 26B MoE, instruction-tuned) — this is the default.
+
+1. Enable Vertex AI API:
+```bash
+gcloud services enable aiplatform.googleapis.com
+```
+
+2. Set env vars in `.env`:
+```
+GCP_PROJECT_ID=your-project-id
+VERTEX_GEMMA_ENDPOINT=gemma-4-26b-a4b-it-maas
+VERTEX_GEMMA_LOCATION=us-central1
+```
+
+3. Test:
+```bash
+uv run python -c "
+from smartscroll.services.vertex import check_vertex_connection
+import asyncio
+print('Connected:', asyncio.run(check_vertex_connection()))
+"
+```
+
+### Option B: Deployed endpoint (for dedicated capacity)
+Deploy Gemma 4 from Model Garden to your own endpoint for consistent latency.
+
+1. Go to [Vertex AI Model Garden](https://console.cloud.google.com/vertex-ai/model-garden)
+2. Find Gemma 4 → Deploy to endpoint
+3. Copy the endpoint ID (numeric)
+4. Set in `.env`:
+```
+VERTEX_GEMMA_ENDPOINT=1234567890123456789
+```
+
+**Usage in pipeline:**
+```python
+from smartscroll.services.vertex import rewrite_chunk_to_script
+
+script, version = await rewrite_chunk_to_script(
+    chunk_text="Your PDF chunk text here...",
+    pdf_id="abc123",
+    chunk_id="chunk_0",
+)
+```
 

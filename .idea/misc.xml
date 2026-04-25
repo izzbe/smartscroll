@@ -4,4 +4,7 @@
     <option name="sdkName" value="/usr/bin/python3.12 (22)" />
   </component>
   <component name="ProjectRootManager" version="2" project-jdk-name="Python 3.12.3 WSL (Ubuntu): (/home/ianzh/smartscroll/.venv/bin/python3.12)" project-jdk-type="Python SDK" />
+  <component name="PythonCompatibilityInspectionAdvertiser">
+    <option name="version" value="3" />
+  </component>
 </project>

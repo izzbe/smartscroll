@@ -30,34 +30,20 @@ class PDF(BaseModel):
     gcs_path: str
     status: PDFStatus = PDFStatus.UPLOADING
     uploaded_at: datetime = Field(default_factory=datetime.utcnow)
-    chunk_count: int = 0
     error_message: str | None = None
 
 
-class Chunk(BaseModel):
-    """Chunk document."""
-
-    index: int
-    source_text: str
-    script: str = ""
-    script_prompt_version: int = 0
-    narration_gcs_path: str = ""
-    video_gcs_path: str = ""
-    duration_ms: int = 0
-    word_count: int = 0
-    created_at: datetime = Field(default_factory=datetime.utcnow)
-
-
 class Video(BaseModel):
-    """Denormalized video document for feed reads."""
+    """Video document - one video per PDF, denormalized for fast feed reads."""
 
     uid: str
     pdf_id: str
-    chunk_id: str
     pdf_filename: str
-    chunk_index: int
     video_gcs_path: str
     duration_ms: int
+    script: str = ""
+    script_prompt_version: int = 0
+    word_count: int = 0
     created_at: datetime = Field(default_factory=datetime.utcnow)
     view_count: int = 0
     total_watch_ms: int = 0

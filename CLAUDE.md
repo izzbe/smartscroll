@@ -1,6 +1,6 @@
 # SmartScroll
 
-> **One-liner:** TikTok-style infinite scroll where every video is a 60-second AI-narrated summary of a PDF the user uploaded, played over Subway Surfers / Minecraft parkour gameplay with burned-in captions. Productive brainrot.
+> **One-liner:** TikTok-style infinite scroll where every video is an AI-narrated summary of a PDF the user uploaded, played over Subway Surfers / Minecraft parkour gameplay with burned-in captions. Longer-form productive brainrot.
 
 This file is the source of truth for how to work in this repo. Read it before doing anything. If something here is wrong, fix it here first, then change the code.
 
@@ -58,50 +58,45 @@ Always put new code in the right app. Shared types go in `packages/shared` — n
 
 ## 3. The pipeline (the heart of the app)
 
-Ingestion runs when a user uploads a PDF. End-to-end, per chunk:
+Ingestion runs when a user uploads a PDF. One PDF = one video (no chunking):
 
 ```
 PDF upload
-  └─> [1] Extract text (PyMuPDF) + structural hints (headings, page breaks)
-  └─> [2] Semantic chunking — see §3.1. Target ~150 spoken words per chunk (~60s @ 150wpm).
-  └─> [3] For each chunk, in parallel:
-        ├─ [3a] Gemma 4 → rewrite chunk into a TikTok-voice script (see §3.2 for prompt rules)
-        ├─ [3b] ElevenLabs TTS with timestamps → narration MP3 + word-level timing (single API call)
-        ├─ [3c] Pick a random gameplay clip from GCS, trim to audio length
-        ├─ [3d] Generate .ass subtitle file from word timestamps (TikTok-style: 1-3 words at a time, bouncy)
-        └─ [3e] FFmpeg: mux gameplay video + narration audio + burned-in captions → final MP4 to GCS
-  └─> [4] Write chunk + video metadata to Firestore. Mark PDF status = ready.
+  └─> [1] Extract full text (PyMuPDF) + structural hints (headings, page breaks)
+  └─> [2] Gemma 4 → rewrite entire PDF into a TikTok-voice script (see §3.2 for prompt rules)
+  └─> [3] ElevenLabs TTS with timestamps → narration MP3 + word-level timing (single API call)
+  └─> [4] Pick a random gameplay clip from GCS, loop/extend to match audio length
+  └─> [5] Generate .ass subtitle file from word timestamps (TikTok-style: 1-3 words at a time, bouncy)
+  └─> [6] FFmpeg: mux gameplay video + narration audio + burned-in captions → final MP4 to GCS
+  └─> [7] Write video metadata to Firestore. Mark PDF status = ready.
 ```
 
-Each chunk is independent. Process them concurrently with `asyncio.gather` — do not serialize them.
+### 3.1 Full-PDF processing
 
-### 3.1 Semantic chunking
+The entire PDF is processed as a single unit. Gemma 4 receives the full extracted text and produces one cohesive script that covers the key points of the document.
 
-Default: split on headings/sections from PyMuPDF's TOC + paragraph boundaries. Greedy-pack paragraphs until ~150 words.
+**LLM-assisted handling:**
+- Equations, code blocks, or figures detected → Gemma decides whether to skip, paraphrase, or describe.
+- Very long PDFs (>10k words) → Gemma focuses on the most important concepts and findings.
 
-**LLM-assisted edge cases** (use Gemma 4 only when needed, it's not free):
-- A "section" is >300 words → ask Gemma to split it into 2-3 self-contained sub-points.
-- A "section" is <60 words → merge with neighbor.
-- Equations, code blocks, or figures detected → ask Gemma whether to skip, paraphrase, or describe.
-
-Chunks must be **self-contained**. The viewer drops in mid-feed — no "as we discussed earlier."
+The script should be **self-contained** — the viewer needs full context without having read the PDF.
 
 ### 3.2 Script rewriting (the Gemma prompt)
 
 The script is the make-or-break of the app. Hard rules baked into the system prompt:
 
-- **140-160 spoken words.** Count words, not tokens.
+- **No strict word limit.** Let the script be as long as needed to cover the PDF's key points. Longer PDFs = longer videos.
 - **Hook in the first 8 words.** "Here's why X is wild:" / "Most people get Y completely wrong:" / "There's a study that…"
 - **Conversational, second-person, present tense.** No "the author argues." Yes "so basically what they found is…"
 - **No filler intros** ("In this video we'll explore…"). Drop straight into the content.
 - **End on a payoff or a cliffhanger**, never a summary.
 - **Plain text only.** No markdown, no headers, no bullets — this gets fed to TTS.
 
-Keep the prompt in `apps/api/smartscroll/prompts/script_rewrite.py` as a single source of truth. Version it (`SCRIPT_PROMPT_V = 3`) and log the version with each generated chunk so we can A/B.
+Keep the prompt in `apps/api/smartscroll/prompts/script_rewrite.py` as a single source of truth. Version it (`SCRIPT_PROMPT_V = 3`) and log the version with each generated video so we can A/B.
 
 ### 3.3 What the LLM is NOT for
 
-- Don't use Gemma to pick gameplay clips. Random with seed = chunk_id is fine.
+- Don't use Gemma to pick gameplay clips. Random with seed = pdf_id is fine.
 - Don't use Gemma to score/rank the feed. Use the deterministic algorithm in §5.
 - Don't use Gemma for OCR. PyMuPDF handles text extraction; if the PDF is scanned, fall back to Vertex Document AI, not Gemma.
 
@@ -115,19 +110,15 @@ users/{uid}
 
 users/{uid}/pdfs/{pdfId}
   filename, gcsPath, status: "uploading"|"processing"|"ready"|"failed",
-  uploadedAt, chunkCount, errorMessage?
+  uploadedAt, errorMessage?
 
-users/{uid}/pdfs/{pdfId}/chunks/{chunkId}
-  index, sourceText, script, scriptPromptVersion,
-  narrationGcsPath, videoGcsPath, durationMs,
-  wordCount, createdAt
-
-videos/{videoId}     # denormalized for fast feed reads
-  uid, pdfId, chunkId, videoGcsPath, durationMs,
+videos/{videoId}     # one video per PDF, denormalized for fast feed reads
+  uid, pdfId, videoGcsPath, durationMs,
+  script, scriptPromptVersion, wordCount,
   createdAt, viewCount, totalWatchMs
 ```
 
-**Rule:** the feed endpoint reads from `videos/` only. Never join across `users/{uid}/pdfs/.../chunks` at request time — that's a fan-out latency disaster. Denormalize on write.
+**Rule:** the feed endpoint reads from `videos/` only. One PDF = one video. No chunking.
 
 ---
 
@@ -173,7 +164,7 @@ GCS_BUCKET_RENDERED=smartscroll-rendered
 GOOGLE_APPLICATION_CREDENTIALS=./gcp-sa.json   # local only
 
 # Vertex AI / Gemma 4
-VERTEX_GEMMA_ENDPOINT=         # Model Garden endpoint for gemma-4-26b-moe-it
+VERTEX_GEMMA_ENDPOINT=         # Leave empty for default MaaS model, or set endpoint ID
 VERTEX_GEMMA_LOCATION=us-central1
 
 # Firebase (frontend)
@@ -265,19 +256,18 @@ Use **uv** for Python (not pip, not poetry). Use **pnpm** for JS (not npm). Don'
 - [x] **List PDFs** — `GET /api/pdfs` returns all PDFs for current user
 - [x] **Get PDF** — `GET /api/pdfs/{pdf_id}` returns single PDF with status
 
-### In progress
-- [ ] PDF text extraction (PyMuPDF)
-- [ ] Semantic chunking
-- [ ] Gemma 4 script rewriting — service created at `services/vertex.py`, needs GCP endpoint
-
 ### Not started
-- [ ] FFmpeg video rendering
+- [ ] FFmpeg video rendering (mux gameplay + audio + captions)
 - [ ] Feed endpoint
 - [ ] Frontend
 
 ### Completed (services)
+- [x] **PDF text extraction** — `services/ingestion.py` extracts full text with PyMuPDF
+- [x] **Gemma 4 script rewriting** — `services/vertex.py` rewrites PDF text into TikTok-style scripts
 - [x] **ElevenLabs TTS with timestamps** — `services/tts.py` generates speech + word-level timing in one call
 - [x] **Voice cloning script** — `scripts/create_voice.py` creates custom voices via IVC
+- [x] **Pipeline orchestrator** — `pipeline/orchestrator.py` connects all services end-to-end
+- [x] **Background processing** — Upload endpoint triggers async pipeline via FastAPI BackgroundTasks
 
 ---
 
@@ -313,7 +303,6 @@ List all PDFs for the current user from Firestore.
       "filename": "deep_vol.pdf",
       "gcs_path": "gs://smartscroll_pdfs/user_demo_123/.../deep_vol.pdf",
       "status": "uploading",
-      "chunk_count": 0,
       "error_message": null
     }
   ]
@@ -336,7 +325,6 @@ Get a single PDF by ID.
   "filename": "deep_vol.pdf",
   "gcs_path": "gs://smartscroll_pdfs/user_demo_123/.../deep_vol.pdf",
   "status": "uploading",
-  "chunk_count": 0,
   "error_message": null
 }
 ```
@@ -351,7 +339,16 @@ curl http://localhost:8000/api/pdfs/{pdf_id}
 
 #### `POST /api/pdfs/upload`
 
-Upload a PDF to GCS and create Firestore record. Associates with current user (dummy `user_demo_123` for now).
+Upload a PDF to GCS, create Firestore record, and start background processing.
+Associates with current user (dummy `user_demo_123` for now).
+
+Background processing pipeline:
+1. Extract text from PDF (PyMuPDF)
+2. Generate TikTok-style script (Gemma 4)
+3. Generate narration audio (ElevenLabs TTS)
+4. Create video record in Firestore
+
+Poll `GET /api/pdfs/{pdf_id}` to check status (`uploading` → `processing` → `ready` or `failed`).
 
 **Request:**
 ```
@@ -401,18 +398,20 @@ smartscroll/
 │   ├── main.py                 # FastAPI app entry
 │   ├── config.py               # Settings from env vars
 │   ├── models/
-│   │   └── firestore.py        # ✅ Pydantic models (User, PDF, Chunk, Video)
-│   ├── pipeline/               # Processing steps (TODO)
+│   │   └── firestore.py        # ✅ Pydantic models (User, PDF, Video)
+│   ├── pipeline/
+│   │   └── orchestrator.py     # ✅ Main pipeline: PDF → text → script → TTS
 │   ├── prompts/
-│   │   └── script_rewrite.py   # Gemma prompt (v1)
+│   │   └── script_rewrite.py   # ✅ Gemma prompt (v3)
 │   ├── routes/
 │   │   ├── health.py           # ✅ Working
-│   │   ├── pdfs.py             # ✅ Upload, list, get working
+│   │   ├── pdfs.py             # ✅ Upload triggers background pipeline
 │   │   ├── feed.py             # TODO
 │   │   └── events.py           # TODO
 │   └── services/
 │       ├── auth.py             # ✅ Dummy user for now
 │       ├── firestore.py        # ✅ Firestore CRUD operations
+│       ├── ingestion.py        # ✅ PDF text extraction (PyMuPDF)
 │       ├── storage.py          # ✅ GCS upload working
 │       ├── tts.py              # ✅ ElevenLabs TTS with word timestamps
 │       └── vertex.py           # ✅ Gemma 4 script rewriting
@@ -443,12 +442,34 @@ uv sync
 # Run API server
 GOOGLE_APPLICATION_CREDENTIALS=./gcp-sa.json uv run uvicorn smartscroll.main:app --reload --port 8000
 
-# Test PDF upload
+# Test PDF upload (triggers background processing)
 curl -X POST http://localhost:8000/api/pdfs/upload -F "file=@temp/deep_vol.pdf"
+
+# Check processing status
+curl http://localhost:8000/api/pdfs/{pdf_id}
 
 # List PDFs
 curl http://localhost:8000/api/pdfs
 ```
+
+### Local pipeline testing (no server required)
+
+```bash
+# Run full pipeline on a local PDF (outputs to ./output/)
+GOOGLE_APPLICATION_CREDENTIALS=./gcp-sa.json uv run python scripts/pipeline_local.py path/to/paper.pdf
+
+# Specify custom output directory
+GOOGLE_APPLICATION_CREDENTIALS=./gcp-sa.json uv run python scripts/pipeline_local.py path/to/paper.pdf -o ./my_output
+
+# Skip TTS (test text extraction + script generation only)
+GOOGLE_APPLICATION_CREDENTIALS=./gcp-sa.json uv run python scripts/pipeline_local.py path/to/paper.pdf --skip-tts
+```
+
+Output files saved to `./output/`:
+- `extracted_text.txt` — Raw text from PDF
+- `script.txt` — Generated TikTok-style script
+- `narration.mp3` — TTS audio (if TTS enabled)
+- `timings.json` — Word-level timestamps for captions (if TTS enabled)
 
 ---
 
@@ -465,8 +486,7 @@ curl http://localhost:8000/api/pdfs
 **Collections:**
 - `users/{uid}` — User profiles
 - `users/{uid}/pdfs/{pdfId}` — PDF metadata and status
-- `users/{uid}/pdfs/{pdfId}/chunks/{chunkId}` — Processed chunks
-- `videos/{videoId}` — Denormalized videos for feed (top-level for fast queries)
+- `videos/{videoId}` — One video per PDF (top-level for fast feed queries)
 
 See `docs/data-model.md` for full schema.
 
@@ -481,10 +501,9 @@ gcloud firestore databases create --location=us-central1 --database=smartscroll
 
 **Service file:** `apps/api/smartscroll/services/vertex.py`
 
-**Two options for Gemma:**
+### Gemma 4 MaaS (default)
 
-### Option A: Serverless Model Garden (recommended)
-Use `gemma-4-26b-a4b-it-maas` (Gemma 4, 26B MoE, instruction-tuned) — this is the default.
+Uses `google/gemma-4-26b-a4b-it-maas` via the global endpoint. This is the default and recommended approach.
 
 1. Enable Vertex AI API:
 ```bash
@@ -494,21 +513,18 @@ gcloud services enable aiplatform.googleapis.com
 2. Set env vars in `.env`:
 ```
 GCP_PROJECT_ID=your-project-id
-VERTEX_GEMMA_ENDPOINT=gemma-4-26b-a4b-it-maas
+VERTEX_GEMMA_ENDPOINT=               # leave empty for default MaaS model
 VERTEX_GEMMA_LOCATION=us-central1
 ```
 
 3. Test:
 ```bash
-uv run python -c "
-from smartscroll.services.vertex import check_vertex_connection
-import asyncio
-print('Connected:', asyncio.run(check_vertex_connection()))
-"
+GOOGLE_APPLICATION_CREDENTIALS=./gcp-sa.json uv run python scripts/pipeline_local.py temp/deep_vol.pdf --skip-tts
 ```
 
-### Option B: Deployed endpoint (for dedicated capacity)
-Deploy Gemma 4 from Model Garden to your own endpoint for consistent latency.
+### Alternative: Deployed endpoint
+
+For dedicated capacity, deploy Gemma 4 from Model Garden to your own endpoint:
 
 1. Go to [Vertex AI Model Garden](https://console.cloud.google.com/vertex-ai/model-garden)
 2. Find Gemma 4 → Deploy to endpoint
@@ -518,14 +534,13 @@ Deploy Gemma 4 from Model Garden to your own endpoint for consistent latency.
 VERTEX_GEMMA_ENDPOINT=1234567890123456789
 ```
 
-**Usage in pipeline:**
+**Usage in code:**
 ```python
-from smartscroll.services.vertex import rewrite_chunk_to_script
+from smartscroll.services.vertex import rewrite_pdf_to_script
 
-script, version = await rewrite_chunk_to_script(
-    chunk_text="Your PDF chunk text here...",
+script, version = await rewrite_pdf_to_script(
+    pdf_text="Your full PDF text here...",
     pdf_id="abc123",
-    chunk_id="chunk_0",
 )
 ```
 

@@ -1,9 +1,8 @@
 """
-ingestion.py — Semantic PDF chunker for SmartScroll.
+ingestion.py — PDF text extraction for SmartScroll.
 
-Reads a PDF, extracts text and embedded images page by page, groups
-paragraphs into semantically-related chunks using sentence embeddings
-and cosine similarity, and returns structured SmartChunk objects.
+Primary mode: Extract full PDF text for single-video processing (one PDF = one video).
+Legacy mode: Semantic chunking is still available for other use cases.
 """
 
 from __future__ import annotations
@@ -307,19 +306,41 @@ def create_semantic_chunks(
 
 
 # ---------------------------------------------------------------------------
-# Public entry point
+# Public entry points
 # ---------------------------------------------------------------------------
+
+
+def extract_full_pdf_text(pdf_path: str) -> str:
+    """
+    Extract all text from a PDF as a single string.
+
+    This is the primary entry point for SmartScroll's one-PDF-one-video model.
+    The full text is sent to Gemma for script generation.
+
+    Usage
+    -----
+    text = extract_full_pdf_text("my_paper.pdf")
+    script = await rewrite_pdf_to_script(text, pdf_id)
+    """
+    pages = extract_pdf_content(pdf_path)
+
+    all_text_parts: list[str] = []
+    for page in pages:
+        if page["text"].strip():
+            all_text_parts.append(page["text"])
+
+    if not all_text_parts:
+        raise RuntimeError(f"No readable text found in '{pdf_path}'.")
+
+    return "\n\n".join(all_text_parts)
 
 
 def chunk_pdf_semantically(pdf_path: str) -> list[SmartChunk]:
     """
-    Full pipeline: PDF → semantic SmartChunk list.
+    Legacy: PDF → semantic SmartChunk list.
 
-    Usage
-    -----
-    chunks = chunk_pdf_semantically("my_paper.pdf")
-    for chunk in chunks:
-        print(chunk.text[:200])
+    Kept for backward compatibility and potential future use cases.
+    For main pipeline, use extract_full_pdf_text() instead.
     """
     pages = extract_pdf_content(pdf_path)
     paragraphs = split_into_paragraphs(pages)
@@ -336,26 +357,36 @@ def chunk_pdf_semantically(pdf_path: str) -> list[SmartChunk]:
 
 if __name__ == "__main__":
     if len(sys.argv) < 2:
-        print("Usage: python src/smartscroll/ingestion.py path/to/sample.pdf")
+        print("Usage: python -m smartscroll.services.ingestion path/to/sample.pdf [--chunks]")
         sys.exit(1)
 
     pdf_path = sys.argv[1]
+    use_chunks = "--chunks" in sys.argv
 
     print(f"\nProcessing: {pdf_path}\n{'=' * 60}")
 
     try:
-        chunks = chunk_pdf_semantically(pdf_path)
+        if use_chunks:
+            # Legacy chunking mode
+            chunks = chunk_pdf_semantically(pdf_path)
+            print(f"Total chunks: {len(chunks)}\n")
+            for chunk in chunks:
+                print(f"--- Chunk {chunk.chunk_id} | Pages {chunk.page_start}–{chunk.page_end} ---")
+                print(chunk.text[:500])
+                if chunk.image_descriptions:
+                    print("\n[Images]")
+                    for desc in chunk.image_descriptions:
+                        print(f"  • {desc}")
+                print()
+        else:
+            # Default: full PDF text extraction
+            full_text = extract_full_pdf_text(pdf_path)
+            word_count = len(full_text.split())
+            print(f"Total words: {word_count}\n")
+            print("--- Full PDF Text (first 2000 chars) ---")
+            print(full_text[:2000])
+            if len(full_text) > 2000:
+                print(f"\n... [{len(full_text) - 2000} more characters]")
     except (FileNotFoundError, RuntimeError) as err:
         print(f"Error: {err}")
         sys.exit(1)
-
-    print(f"Total chunks: {len(chunks)}\n")
-
-    for chunk in chunks:
-        print(f"--- Chunk {chunk.chunk_id} | Pages {chunk.page_start}–{chunk.page_end} ---")
-        print(chunk.text[:500])
-        if chunk.image_descriptions:
-            print("\n[Images]")
-            for desc in chunk.image_descriptions:
-                print(f"  • {desc}")
-        print()

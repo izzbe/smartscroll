@@ -8,8 +8,9 @@ and cosine similarity, and returns structured SmartChunk objects.
 
 from __future__ import annotations
 
+import re
 import sys
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 
 import fitz  # PyMuPDF
 import numpy as np
@@ -58,12 +59,36 @@ def describe_image(image_bytes: bytes) -> str:
 # ---------------------------------------------------------------------------
 
 
+def _join_block_lines(block_text: str) -> str:
+    """
+    Collapse the line breaks that PDFs insert mid-sentence due to page layout.
+
+    PyMuPDF gives us text blocks, and within a block every line break is just
+    a visual wrap — not a real paragraph boundary.  We join them back into
+    one clean string so downstream code sees full sentences, not fragments.
+
+    Handles the two common cases:
+      - Hyphenated breaks: "connec-\ntion" → "connection"
+      - Soft wraps:        "the Transformer\narchitecture" → "the Transformer architecture"
+    """
+    # Rejoin hyphenated line breaks (e.g. "architec-\nture" → "architecture")
+    text = re.sub(r"-\n", "", block_text)
+    # Replace remaining newlines with a space
+    text = re.sub(r"\n", " ", text)
+    # Collapse any runs of whitespace
+    return re.sub(r" +", " ", text).strip()
+
+
 def extract_pdf_content(pdf_path: str) -> list[dict]:
     """
     Open the PDF and return one dict per page with keys:
         page_number  int   (1-indexed)
-        text         str   raw page text
+        text         str   page text, with blocks separated by blank lines
         images       list  of image-description strings
+
+    Uses PyMuPDF's block-level extraction so that text is pre-grouped into
+    visual paragraphs before we do any processing.  This avoids the
+    sentence-fragment problem caused by raw line-by-line extraction.
     """
     if not pdf_path:
         raise ValueError("pdf_path must not be empty.")
@@ -85,8 +110,22 @@ def extract_pdf_content(pdf_path: str) -> list[dict]:
         page = doc[page_index]
         page_number = page_index + 1  # human-friendly 1-based numbering
 
-        # --- text ---
-        raw_text = page.get_text("text")  # plain text, preserves line breaks
+        # --- text via block extraction ---
+        # Each entry is (x0, y0, x1, y1, text, block_no, block_type).
+        # block_type 0 = text, block_type 1 = image.
+        raw_blocks = page.get_text("blocks")
+
+        cleaned_blocks: list[str] = []
+        for block in raw_blocks:
+            block_type = block[6]
+            if block_type != 0:
+                continue  # skip image blocks — handled separately below
+            joined = _join_block_lines(block[4])
+            if joined:
+                cleaned_blocks.append(joined)
+
+        # Join blocks with a blank line so split_into_paragraphs can split them.
+        page_text = "\n\n".join(cleaned_blocks)
 
         # --- embedded images ---
         image_descriptions: list[str] = []
@@ -104,7 +143,7 @@ def extract_pdf_content(pdf_path: str) -> list[dict]:
         pages.append(
             {
                 "page_number": page_number,
-                "text": raw_text,
+                "text": page_text,
                 "images": image_descriptions,
             }
         )
@@ -128,7 +167,7 @@ def split_into_paragraphs(pages: list[dict]) -> list[dict]:
         images       list  image descriptions from the same page
                           (attached only to the *first* paragraph of the page)
     """
-    MIN_PARAGRAPH_CHARS = 40  # ignore fragments shorter than this
+    MIN_PARAGRAPH_CHARS = 100  # ignore fragments shorter than this (headers, captions, page numbers)
 
     paragraphs: list[dict] = []
 
@@ -183,11 +222,11 @@ _EMBEDDING_MODEL = SentenceTransformer("all-MiniLM-L6-v2")
 def create_semantic_chunks(
     paragraphs: list[dict],
     source_file: str,
-    similarity_threshold: float = 0.55,
-    max_chunk_chars: int = 1800,
+    similarity_threshold: float = 0.35,
+    max_chunk_chars: int = 3500,
 ) -> list[SmartChunk]:
     """
-    Group paragraphs into semantically cohesive chunks.
+    Group paragraphs into semantically cohesive chunks (roughly page-sized).
 
     Two adjacent paragraphs are merged into the same chunk when:
       1. Their cosine similarity is >= similarity_threshold, AND
@@ -198,10 +237,10 @@ def create_semantic_chunks(
     paragraphs          Output of split_into_paragraphs().
     source_file         Original PDF path — stored in every chunk.
     similarity_threshold
-                        0.0–1.0.  Higher → stricter grouping (more, smaller
-                        chunks).  Lower → looser grouping (fewer, bigger
-                        chunks).  0.55 is a good starting point.
-    max_chunk_chars     Hard ceiling on chunk text length.
+                        0.0–1.0.  Lower → more paragraphs merge (bigger chunks).
+                        Higher → fewer merges (smaller chunks).
+                        0.35 targets roughly one topic/lesson per chunk.
+    max_chunk_chars     Hard ceiling on chunk text length (~3500 ≈ one dense page).
     """
     if not paragraphs:
         return []

@@ -1,0 +1,52 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "smartscroll-api"
+version = "0.1.0"
+description = "SmartScroll API - TikTok-style AI-narrated PDF summaries"
+requires-python = ">=3.12"
+dependencies = [
+    # Web framework
+    "fastapi>=0.115.0",
+    "uvicorn[standard]>=0.32.0",
+    "python-multipart>=0.0.12",
+
+    # Async HTTP client
+    "httpx>=0.28.0",
+
+    # Validation & settings
+    "pydantic>=2.10.0",
+    "pydantic-settings>=2.6.0",
+
+    # GCP
+    "google-cloud-storage>=2.18.0",
+    "google-cloud-firestore>=2.19.0",
+    "google-cloud-aiplatform>=1.72.0",
+
+    # Firebase Admin
+    "firebase-admin>=6.6.0",
+
+    # PDF processing
+    "pymupdf>=1.25.0",
+
+    # Audio/Video
+    "ffmpeg-python>=0.2.0",
+
+    # Transcription
+    "faster-whisper>=1.1.0",
+
+    # Logging
+    "structlog>=24.4.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.3.0",
+    "pytest-asyncio>=0.24.0",
+    "ruff>=0.8.0",
+]
+
+[tool.hatch.build.targets.wheel]
+packages = ["smartscroll"]

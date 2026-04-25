@@ -252,3 +252,36 @@ Use **uv** for Python (not pip, not poetry). Use **pnpm** for JS (not npm). Don'
 - **Pick the boring option.** Hackathon ≠ portfolio piece.
 - **If a step takes >30 min to figure out, ask the team.** Don't burn an hour on IAM.
 - **Show, don't perfect.** A demo where 80% works and 20% is hardcoded beats one where everything is real but the script LLM is still being prompt-engineered at 3am.
+
+# Field notes
+
+  smartscroll/                                                                                                                                                                        ├── apps/api/
+  │   ├── pyproject.toml          # FastAPI dependencies                                                                                                                            
+  │   └── smartscroll/                                                                                                                                                            
+  │       ├── main.py             # FastAPI app entry
+  │       ├── models/             # Pydantic models (TODO)
+  │       ├── pipeline/           # chunk, script, tts, caption, render (TODO)
+  │       ├── prompts/
+  │       │   └── script_rewrite.py   # Gemma prompt template
+  │       ├── routes/
+  │       │   ├── health.py       # /health endpoint (working)
+  │       │   ├── pdfs.py         # /api/pdfs (TODO)
+  │       │   ├── feed.py         # /api/feed (TODO)
+  │       │   └── events.py       # /api/events (TODO)
+  │       └── services/           # firestore, storage, auth, tts (TODO)
+  ├── apps/web/                   # Next.js (empty)
+  ├── packages/shared/            # Shared Pydantic models
+  ├── scripts/
+  │   ├── pipeline_local.py       # Debug pipeline locally
+  │   └── seed_gameplay.py        # Seed GCS with gameplay clips
+  ├── infra/
+  │   ├── terraform/
+  │   └── docker/
+  ├── .env.example
+  └── pyproject.toml              # uv workspace root
+
+  To install dependencies and run:
+  cd apps/api
+  uv sync
+  uv run uvicorn smartscroll.main:app --reload --port 8000
+

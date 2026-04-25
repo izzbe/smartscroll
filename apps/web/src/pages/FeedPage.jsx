@@ -1,0 +1,112 @@
+import { Link } from 'react-router-dom'
+import FeedCard from '../components/FeedCard'
+import './FeedPage.css'
+
+const MOCK_FEED = [
+  {
+    id: 1,
+    topic: 'What is a p-value?',
+    subtitle: 'A p-value is basically a surprise score.',
+    caption: 'A p-value tells you how surprising your result is if the null hypothesis was true. If your p-value is small, your data would be rare by chance alone.',
+    tags: '#studytok #statistics #brainrotlearning',
+    gradient: 'linear-gradient(160deg, #1a1a2e 0%, #16213e 40%, #0f3460 100%)',
+    likes: 14200,
+    comments: 843,
+    saves: 4100,
+    shares: 2300,
+  },
+  {
+    id: 2,
+    topic: 'Confidence Intervals',
+    subtitle: "A confidence interval is your estimate's safety net.",
+    caption: 'Instead of one exact guess, we give a range of reasonable values. A 95% CI means that 95% of intervals built this way contain the true value.',
+    tags: '#studytok #statistics #smartscroll',
+    gradient: 'linear-gradient(160deg, #0d0d1a 0%, #1a0533 40%, #2d1b69 100%)',
+    likes: 9800,
+    comments: 512,
+    saves: 2800,
+    shares: 1500,
+  },
+  {
+    id: 3,
+    topic: 'Python Loops',
+    subtitle: 'For loops are copy-paste, but smarter.',
+    caption: "Loops let your code repeat a task without writing the same line again and again. Master for and while loops and you'll unlock 80% of programming logic.",
+    tags: '#codingtok #python #brainrotlearning #smartscroll',
+    gradient: 'linear-gradient(160deg, #0a1628 0%, #0d2137 40%, #1a4a3a 100%)',
+    likes: 22100,
+    comments: 1340,
+    saves: 7600,
+    shares: 4200,
+  },
+  {
+    id: 4,
+    topic: 'The Central Limit Theorem',
+    subtitle: 'Enough samples and everything becomes a bell curve. Wild.',
+    caption: 'No matter the original distribution, sample means cluster into a normal curve as sample size grows. This is why so much of statistics works at all.',
+    tags: '#studytok #statistics #mathbrainrot',
+    gradient: 'linear-gradient(160deg, #1a0a00 0%, #3d1a00 40%, #6b2d00 100%)',
+    likes: 7650,
+    comments: 390,
+    saves: 1900,
+    shares: 880,
+  },
+  {
+    id: 5,
+    topic: 'Big O Notation',
+    subtitle: 'O(n²) means your algorithm hates large inputs.',
+    caption: "Big O tells you how an algorithm's runtime grows as the input size increases. O(1) is instant. O(n²) is pain. Knowing this saves you from writing slow code.",
+    tags: '#codingtok #algorithms #cs #smartscroll',
+    gradient: 'linear-gradient(160deg, #0a0a0a 0%, #1a001a 40%, #2d0033 100%)',
+    likes: 18400,
+    comments: 920,
+    saves: 5500,
+    shares: 3100,
+  },
+]
+
+export default function FeedPage() {
+  return (
+    <div className="feed-root">
+      {/* Top bar */}
+      <div className="feed-topbar">
+        <Link to="/upload" className="back-link">← Upload</Link>
+        <div className="feed-tabs">
+          <button className="tab-btn">Following</button>
+          <button className="tab-btn active">For You</button>
+        </div>
+        <div className="topbar-spacer" />
+      </div>
+
+      {/* Scrollable feed */}
+      <div className="feed-scroll">
+        {MOCK_FEED.map((item, i) => (
+          <FeedCard key={item.id} item={item} index={i} />
+        ))}
+      </div>
+
+      {/* Bottom navigation */}
+      <nav className="bottom-nav">
+        <button className="nav-item active">
+          <span className="nav-icon">🏠</span>
+          <span className="nav-label">Home</span>
+        </button>
+        <button className="nav-item">
+          <span className="nav-icon">🔍</span>
+          <span className="nav-label">Discover</span>
+        </button>
+        <button className="nav-item create-btn">
+          <span className="create-icon">＋</span>
+        </button>
+        <button className="nav-item">
+          <span className="nav-icon">📬</span>
+          <span className="nav-label">Inbox</span>
+        </button>
+        <button className="nav-item">
+          <span className="nav-icon">👤</span>
+          <span className="nav-label">Me</span>
+        </button>
+      </nav>
+    </div>
+  )
+}

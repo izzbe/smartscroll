@@ -1,0 +1,86 @@
+.bbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-around;
+  padding: 10px 0 18px;
+  background: #000;
+  border-top: 1px solid rgba(255, 255, 255, 0.07);
+  flex-shrink: 0;
+}
+
+/* Regular nav item */
+.bbar-item {
+  background: none;
+  border: none;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 3px;
+  cursor: pointer;
+  color: rgba(255, 255, 255, 0.45);
+  padding: 4px 10px;
+  min-width: 48px;
+  transition: color 0.15s;
+}
+
+.bbar-item:hover {
+  color: rgba(255, 255, 255, 0.8);
+}
+
+.bbar-label {
+  font-size: 0.6rem;
+  font-weight: 600;
+  letter-spacing: 0.3px;
+}
+
+/* Create button — TikTok dual-color border look */
+.bbar-create {
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 2px 8px;
+  position: relative;
+  transition: transform 0.15s;
+}
+
+.bbar-create:hover {
+  transform: scale(1.06);
+}
+
+.bbar-create-inner {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 30px;
+  background: #fff;
+  border-radius: 8px;
+  font-size: 1.2rem;
+  font-weight: 900;
+  color: #000;
+  line-height: 1;
+  z-index: 1;
+}
+
+/* Cyan left shadow, red right shadow */
+.bbar-create-inner::before,
+.bbar-create-inner::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: 8px;
+  z-index: -1;
+}
+
+.bbar-create-inner::before {
+  background: #69c9d0;
+  left: -4px;
+  right: 4px;
+}
+
+.bbar-create-inner::after {
+  background: #ee1d52;
+  left: 4px;
+  right: -4px;
+}

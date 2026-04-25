@@ -1,0 +1,67 @@
+import './BottomBar.css'
+
+export default function BottomBar({ onCreateClick }) {
+  return (
+    <nav className="bbar">
+      <button className="bbar-item">
+        <HomeIcon />
+        <span className="bbar-label">Home</span>
+      </button>
+
+      <button className="bbar-item">
+        <DiscoverIcon />
+        <span className="bbar-label">Discover</span>
+      </button>
+
+      {/* Create — emphasized, tapping returns to Upload */}
+      <button className="bbar-create" onClick={onCreateClick} aria-label="Create">
+        <span className="bbar-create-inner">＋</span>
+      </button>
+
+      <button className="bbar-item">
+        <InboxIcon />
+        <span className="bbar-label">Inbox</span>
+      </button>
+
+      <button className="bbar-item">
+        <MeIcon />
+        <span className="bbar-label">Me</span>
+      </button>
+    </nav>
+  )
+}
+
+function HomeIcon() {
+  return (
+    <svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor">
+      <path d="M10 20v-6h4v6h5v-8h3L12 3 2 12h3v8z"/>
+    </svg>
+  )
+}
+
+function DiscoverIcon() {
+  return (
+    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <circle cx="11" cy="11" r="8"/>
+      <path d="m21 21-4.35-4.35"/>
+    </svg>
+  )
+}
+
+function InboxIcon() {
+  return (
+    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/>
+      <polyline points="22,6 12,13 2,6"/>
+    </svg>
+  )
+}
+
+function MeIcon() {
+  return (
+    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/>
+      <circle cx="12" cy="7" r="4"/>
+    </svg>
+  )
+}

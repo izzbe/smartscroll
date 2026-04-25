@@ -13,9 +13,10 @@ export default function BottomBar({ onCreateClick }) {
         <span className="bbar-label">Discover</span>
       </button>
 
-      {/* Create — emphasized, tapping returns to Upload */}
       <button className="bbar-create" onClick={onCreateClick} aria-label="Create">
-        <span className="bbar-create-inner">＋</span>
+        <div className="bbar-create-face">
+          <PlusIcon />
+        </div>
       </button>
 
       <button className="bbar-item">
@@ -28,6 +29,15 @@ export default function BottomBar({ onCreateClick }) {
         <span className="bbar-label">Me</span>
       </button>
     </nav>
+  )
+}
+
+function PlusIcon() {
+  return (
+    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#111" strokeWidth="2.8" strokeLinecap="round">
+      <line x1="12" y1="5" x2="12" y2="19" />
+      <line x1="5"  y1="12" x2="19" y2="12" />
+    </svg>
   )
 }
 

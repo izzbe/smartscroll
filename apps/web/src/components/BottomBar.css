@@ -8,7 +8,7 @@
   flex-shrink: 0;
 }
 
-/* Regular nav item */
+/* Regular nav items */
 .bbar-item {
   background: none;
   border: none;
@@ -33,54 +33,29 @@
   letter-spacing: 0.3px;
 }
 
-/* Create button — TikTok dual-color border look */
+/* Create button wrapper */
 .bbar-create {
   background: none;
   border: none;
   cursor: pointer;
-  padding: 2px 8px;
-  position: relative;
+  padding: 4px 10px;
   transition: transform 0.15s;
 }
 
-.bbar-create:hover {
-  transform: scale(1.06);
-}
+.bbar-create:hover  { transform: scale(1.06); }
+.bbar-create:active { transform: scale(0.95); }
 
-.bbar-create-inner {
-  position: relative;
+/* White face with cyan left shadow + red right shadow via box-shadow.
+   box-shadow always renders behind the element — no z-index needed. */
+.bbar-create-face {
+  width: 52px;
+  height: 34px;
+  background: #fff;
+  border-radius: 12px;
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 44px;
-  height: 30px;
-  background: #fff;
-  border-radius: 8px;
-  font-size: 1.2rem;
-  font-weight: 900;
-  color: #000;
-  line-height: 1;
-  z-index: 1;
-}
-
-/* Cyan left shadow, red right shadow */
-.bbar-create-inner::before,
-.bbar-create-inner::after {
-  content: '';
-  position: absolute;
-  inset: 0;
-  border-radius: 8px;
-  z-index: -1;
-}
-
-.bbar-create-inner::before {
-  background: #69c9d0;
-  left: -4px;
-  right: 4px;
-}
-
-.bbar-create-inner::after {
-  background: #ee1d52;
-  left: 4px;
-  right: -4px;
+  box-shadow:
+    -4px 0 0 0 #69c9d0,   /* cyan peek — left  */
+     4px 0 0 0 #ee1d52;   /* red  peek — right */
 }

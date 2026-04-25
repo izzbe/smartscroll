@@ -141,7 +141,9 @@ No cross-user discovery for v1. If the demo needs it, we'll add a `public: bool`
 
 ## 6. Frontend — the scroll
 
-- One video on screen at a time, full-viewport, snap-scroll vertical.
+**Stack (actual):** React 18 + Vite, plain CSS modules (no Tailwind). `npm` is the package manager — `pnpm` was not installed on the dev machine.
+
+- One video/card on screen at a time, full-viewport, snap-scroll vertical.
 - Use the `IntersectionObserver` API + `<video>` with `playsInline muted autoplay loop`.
   - Start muted (browser autoplay policy). Tap-to-unmute on first interaction, then remember preference.
 - **Preload the next 2 videos** (HTML `preload="auto"` on the next two `<video>` tags, hidden). Anything more wastes bandwidth.
@@ -193,10 +195,10 @@ uv sync
 # Run API server
 uv run uvicorn smartscroll.main:app --reload --port 8000
 
-# Frontend
+# Frontend (uses npm — pnpm not installed on dev machine)
 cd apps/web
-pnpm install
-pnpm dev   # localhost:3000
+npm install
+npm run dev   # localhost:5173
 
 # Run the full pipeline on a local PDF without the API
 uv run python scripts/pipeline_local.py path/to/paper.pdf
@@ -261,8 +263,19 @@ Use **uv** for Python (not pip, not poetry). Use **pnpm** for JS (not npm). Don'
 - [x] **Get PDF** — `GET /api/pdfs/{pdf_id}` returns single PDF with status
 
 ### Not started
-- [ ] Feed endpoint
-- [ ] Frontend
+- [ ] Feed endpoint (`GET /api/feed`)
+- [ ] Events endpoint (`POST /api/events`)
+- [ ] Real auth (Firebase) — currently hardcoded `user_demo_123`
+
+### Completed (frontend)
+- [x] **TikTok-style shell** — two-tab swipeable layout (Upload | Smart Feed) at `apps/web/`
+- [x] **Upload panel** — PDF drag-and-drop + text paste, mode picker with SVG icons, generate button
+- [x] **Smart Feed tab** — vertical snap-scroll feed with mock cards (replaces placeholder)
+- [x] **FeedCard** — brainrot subtitle, like/save toggles with animation, expandable caption, topic tag, verified badge, audio row
+- [x] **Ask Gemma drawer** — slide-up comment panel via `createPortal` (escapes transform stacking context), chat bubble UI, placeholder replies
+- [x] **BottomBar** — TikTok-style nav with white create button + `box-shadow` cyan/red offset
+- [x] **TopTabs** — sliding white indicator underline, horizontal swipe-to-switch with direction filtering
+- [x] **Font** — TikTok Sans Variable (`@fontsource-variable/tiktok-sans`), self-hosted via npm
 
 ### Completed (services)
 - [x] **PDF text extraction** — `services/ingestion.py` extracts full text with PyMuPDF
@@ -421,7 +434,29 @@ smartscroll/
 │       ├── storage.py          # ✅ GCS upload working
 │       ├── tts.py              # ✅ ElevenLabs TTS with word timestamps
 │       └── vertex.py           # ✅ Gemma 4 script rewriting
-├── apps/web/                   # Next.js (empty)
+├── apps/web/                   # React 18 + Vite frontend (npm)
+│   ├── src/
+│   │   ├── main.jsx            # Entry — imports TikTok Sans font + App
+│   │   ├── App.jsx             # Router: / → UploadPage, /upload & /feed → redirect
+│   │   ├── index.css           # Global reset + font-family
+│   │   ├── data/
+│   │   │   └── mockFeed.js     # Shared mock feed items (replace with API later)
+│   │   ├── pages/
+│   │   │   ├── UploadPage.jsx  # TikTok shell: status bar + TopTabs + slides + BottomBar
+│   │   │   └── UploadPage.css
+│   │   └── components/
+│   │       ├── TopTabs.jsx     # Upload | Smart Feed tab bar with sliding indicator
+│   │       ├── TopTabs.css
+│   │       ├── UploadPanel.jsx # Create screen: PDF/Text mode + drop zone + generate btn
+│   │       ├── UploadPanel.css
+│   │       ├── SmartFeed.jsx   # Snap-scroll container rendering FeedCards
+│   │       ├── SmartFeed.css
+│   │       ├── FeedCard.jsx    # Full-screen card: subtitle, action bar, caption info
+│   │       ├── FeedCard.css
+│   │       ├── CommentDrawer.jsx  # Ask Gemma slide-up chat panel (rendered via Portal)
+│   │       ├── CommentDrawer.css
+│   │       ├── BottomBar.jsx   # Home/Discover/Create/Inbox/Me nav
+│   │       └── BottomBar.css
 ├── packages/shared/            # Shared Pydantic models
 ├── scripts/
 │   ├── create_voice.py         # Create ElevenLabs voice via IVC

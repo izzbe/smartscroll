@@ -253,6 +253,77 @@ Use **uv** for Python (not pip, not poetry). Use **pnpm** for JS (not npm). Don'
 - **If a step takes >30 min to figure out, ask the team.** Don't burn an hour on IAM.
 - **Show, don't perfect.** A demo where 80% works and 20% is hardcoded beats one where everything is real but the script LLM is still being prompt-engineered at 3am.
 
+# Ingestion module — implementation notes
+
+> Implemented in `src/smartscroll/ingestion.py`. Tests in `tests/test_ingestion.py`.
+
+## What was built
+
+The semantic PDF chunker — step [1] and [2] of the pipeline (§3). It is a standalone module that takes a PDF path and returns a list of `SmartChunk` objects ready for the script-rewriting step.
+
+### Dependencies added
+
+| Package | Purpose |
+|---|---|
+| `sentence-transformers` | Loads `all-MiniLM-L6-v2` to embed paragraphs into meaning vectors |
+| `scikit-learn` | Cosine similarity between embedding vectors |
+| `pytest` (dev) | Test runner — run via `uv run python -m pytest` |
+
+### Pipeline (inside ingestion.py)
+
+```
+PDF path
+  └─> extract_pdf_content()     # PyMuPDF: raw text + images, page by page
+  └─> split_into_paragraphs()   # clean text, drop fragments < 40 chars
+  └─> create_semantic_chunks()  # embed paragraphs → group by cosine similarity
+  └─> list[SmartChunk]
+```
+
+### Key design decisions
+
+- **Embedding model**: `all-MiniLM-L6-v2` (~80 MB, CPU-friendly). Loaded once at module level — not per call.
+- **Similarity threshold**: `0.55` default. Lower = bigger chunks. Higher = more, smaller chunks.
+- **Max chunk chars**: `1800` hard ceiling. Prevents runaway merges even when similarity is high.
+- **Image handling**: `describe_image(image_bytes)` is a placeholder stub. Swap its body for any vision API (OpenAI, Gemini, Claude). Signature must stay `(bytes) -> str`.
+
+### SmartChunk dataclass
+
+```python
+@dataclass
+class SmartChunk:
+    chunk_id: int
+    page_start: int
+    page_end: int
+    text: str
+    image_descriptions: list[str]
+    source_file: str
+```
+
+### Note on §3.1 (semantic chunking spec)
+
+§3.1 describes a heading/word-count greedy approach with LLM fallbacks. What is implemented uses sentence-embedding cosine similarity instead. The embedding approach was chosen for the MVP because it requires no LLM calls and handles PDFs without clear heading structure. The two approaches can be swapped or combined later — the public interface (`chunk_pdf_semantically(pdf_path)`) stays the same either way.
+
+## Running ingestion locally
+
+```bash
+# CLI — prints chunks to stdout
+uv run python src/smartscroll/ingestion.py path/to/paper.pdf
+
+# Tests — 38 unit tests, no external PDF needed
+uv run python -m pytest tests/test_ingestion.py -v
+```
+
+## Known gotcha — PyMuPDF exception type
+
+`fitz.FileNotFoundError` is NOT a subclass of Python's built-in `FileNotFoundError`. Always catch both:
+
+```python
+except (FileNotFoundError, fitz.FileNotFoundError):
+    raise FileNotFoundError(...)
+```
+
+---
+
 # Field notes
 
   smartscroll/                                                                                                                                                                        ├── apps/api/

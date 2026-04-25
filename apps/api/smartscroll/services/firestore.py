@@ -6,7 +6,7 @@ from functools import lru_cache
 
 from google.cloud import firestore
 
-from smartscroll.models.firestore import PDF, Chunk, PDFStatus, User, Video
+from smartscroll.models.firestore import PDF, PDFStatus, User, Video
 
 
 class FirestoreService:
@@ -73,13 +73,10 @@ class FirestoreService:
         uid: str,
         pdf_id: str,
         status: PDFStatus,
-        chunk_count: int | None = None,
         error_message: str | None = None,
     ) -> None:
         """Update PDF status."""
         data: dict = {"status": status.value}
-        if chunk_count is not None:
-            data["chunk_count"] = chunk_count
         if error_message is not None:
             data["error_message"] = error_message
 
@@ -104,37 +101,7 @@ class FirestoreService:
         )
         return [(doc.id, PDF(**doc.to_dict())) for doc in docs]
 
-    # Chunks
-
-    async def create_chunk(
-        self, uid: str, pdf_id: str, chunk_id: str, chunk: Chunk
-    ) -> None:
-        """Create a chunk document."""
-        await self._run_sync(
-            lambda: self.db.collection("users")
-            .document(uid)
-            .collection("pdfs")
-            .document(pdf_id)
-            .collection("chunks")
-            .document(chunk_id)
-            .set(chunk.model_dump())
-        )
-
-    async def update_chunk(
-        self, uid: str, pdf_id: str, chunk_id: str, data: dict
-    ) -> None:
-        """Update a chunk document."""
-        await self._run_sync(
-            lambda: self.db.collection("users")
-            .document(uid)
-            .collection("pdfs")
-            .document(pdf_id)
-            .collection("chunks")
-            .document(chunk_id)
-            .update(data)
-        )
-
-    # Videos (denormalized)
+    # Videos (one per PDF)
 
     async def create_video(self, video_id: str, video: Video) -> None:
         """Create a denormalized video document."""

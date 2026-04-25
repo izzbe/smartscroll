@@ -2,10 +2,11 @@
 
 import uuid
 
-from fastapi import APIRouter, Depends, HTTPException, UploadFile
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, UploadFile
 from pydantic import BaseModel
 
 from smartscroll.models.firestore import PDF, PDFStatus
+from smartscroll.pipeline.orchestrator import process_pdf_background
 from smartscroll.services.auth import get_current_user_id
 from smartscroll.services.firestore import FirestoreService, get_firestore_service
 from smartscroll.services.storage import StorageService, get_storage_service
@@ -30,7 +31,6 @@ class PDFResponse(BaseModel):
     filename: str
     gcs_path: str
     status: PDFStatus
-    chunk_count: int
     error_message: str | None
 
 
@@ -56,7 +56,6 @@ async def list_pdfs(
                 filename=pdf.filename,
                 gcs_path=pdf.gcs_path,
                 status=pdf.status,
-                chunk_count=pdf.chunk_count,
                 error_message=pdf.error_message,
             )
             for pdf_id, pdf in pdfs
@@ -79,7 +78,6 @@ async def get_pdf(
         filename=pdf.filename,
         gcs_path=pdf.gcs_path,
         status=pdf.status,
-        chunk_count=pdf.chunk_count,
         error_message=pdf.error_message,
     )
 
@@ -87,11 +85,21 @@ async def get_pdf(
 @router.post("/upload", response_model=UploadResponse)
 async def upload_pdf(
     file: UploadFile,
+    background_tasks: BackgroundTasks,
     uid: str = Depends(get_current_user_id),
     storage: StorageService = Depends(get_storage_service),
     firestore: FirestoreService = Depends(get_firestore_service),
 ) -> UploadResponse:
-    """Upload a PDF to GCS and create Firestore record."""
+    """Upload a PDF to GCS and start background processing.
+
+    The PDF is uploaded to GCS and a Firestore record is created.
+    Background processing is then triggered to:
+    1. Extract text from the PDF
+    2. Generate a TikTok-style script with Gemma
+    3. Generate narration audio with ElevenLabs TTS
+
+    Poll GET /api/pdfs/{pdf_id} to check processing status.
+    """
     if not file.filename or not file.filename.lower().endswith(".pdf"):
         raise HTTPException(status_code=400, detail="File must be a PDF")
 
@@ -114,6 +122,15 @@ async def upload_pdf(
         pdf_id=pdf_id,
         filename=file.filename,
         gcs_path=gcs_uri,
+    )
+
+    # Start background processing pipeline
+    background_tasks.add_task(
+        process_pdf_background,
+        uid=uid,
+        pdf_id=pdf_id,
+        gcs_path=gcs_uri,
+        filename=file.filename,
     )
 
     return UploadResponse(

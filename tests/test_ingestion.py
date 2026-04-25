@@ -13,11 +13,12 @@ import io
 import fitz  # PyMuPDF
 import pytest
 
-from smartscroll.ingestion import (
+from smartscroll.services.ingestion import (
     SmartChunk,
     chunk_pdf_semantically,
     create_semantic_chunks,
     describe_image,
+    extract_full_pdf_text,
     extract_pdf_content,
     split_into_paragraphs,
 )
@@ -362,7 +363,40 @@ class TestCreateSemanticChunks:
 
 
 # ---------------------------------------------------------------------------
-# chunk_pdf_semantically  (full pipeline)
+# extract_full_pdf_text (primary entry point for one-PDF-one-video)
+# ---------------------------------------------------------------------------
+
+
+class TestExtractFullPdfText:
+    def test_returns_string(self, single_page_pdf):
+        text = extract_full_pdf_text(single_page_pdf)
+        assert isinstance(text, str)
+
+    def test_text_is_non_empty(self, single_page_pdf):
+        text = extract_full_pdf_text(single_page_pdf)
+        assert len(text) > 0
+
+    def test_contains_expected_content(self, single_page_pdf):
+        text = extract_full_pdf_text(single_page_pdf)
+        assert "fox" in text  # from SHORT_PARA
+
+    def test_multi_page_pdf_combines_all_pages(self, multi_page_pdf):
+        text = extract_full_pdf_text(multi_page_pdf)
+        assert "machine learning" in text.lower()  # page 1
+        assert "cooking" in text.lower()  # page 2
+        assert "ancient history" in text.lower()  # page 3
+
+    def test_missing_file_raises(self):
+        with pytest.raises(FileNotFoundError):
+            extract_full_pdf_text("/tmp/does_not_exist_abc123.pdf")
+
+    def test_empty_text_pdf_raises_runtime_error(self, empty_text_pdf):
+        with pytest.raises(RuntimeError):
+            extract_full_pdf_text(empty_text_pdf)
+
+
+# ---------------------------------------------------------------------------
+# chunk_pdf_semantically (legacy, kept for backward compatibility)
 # ---------------------------------------------------------------------------
 
 

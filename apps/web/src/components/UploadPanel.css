@@ -57,9 +57,11 @@
   background: rgba(105, 201, 208, 0.07);
 }
 
-.up-mode-icon {
-  font-size: 1.35rem;
-  line-height: 1;
+.up-mode-svg {
+  width: 26px;
+  height: 26px;
+  color: rgba(255, 255, 255, 0.35);
+  transition: color 0.2s;
 }
 
 .up-mode-label {
@@ -70,6 +72,10 @@
 }
 
 .up-mode-card--active .up-mode-label {
+  color: var(--cyan);
+}
+
+.up-mode-card--active .up-mode-svg {
   color: var(--cyan);
 }
 

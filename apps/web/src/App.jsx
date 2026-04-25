@@ -8,7 +8,7 @@ export default function App() {
       <Routes>
         <Route path="/" element={<UploadPage />} />
         <Route path="/upload" element={<Navigate to="/" replace />} />
-        <Route path="/feed" element={<FeedPage />} />
+        <Route path="/feed" element={<Navigate to="/" replace />} />
       </Routes>
     </BrowserRouter>
   )

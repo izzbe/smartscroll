@@ -1,29 +1,33 @@
 import { useState, useRef } from 'react'
 import TopTabs from '../components/TopTabs'
 import UploadPanel from '../components/UploadPanel'
-import SmartFeedPlaceholder from '../components/SmartFeedPlaceholder'
+import SmartFeed from '../components/SmartFeed'
 import BottomBar from '../components/BottomBar'
 import './UploadPage.css'
 
 export default function UploadPage() {
   const [activeTab, setActiveTab] = useState(0) // 0 = Upload, 1 = Smart Feed
-  const pointerStartX = useRef(null)
+  const startX = useRef(null)
+  const startY = useRef(null)
 
   function onPointerDown(e) {
-    // record where the drag/touch started
-    pointerStartX.current = e.clientX ?? e.touches?.[0]?.clientX ?? null
+    startX.current = e.clientX
+    startY.current = e.clientY
   }
 
   function onPointerUp(e) {
-    if (pointerStartX.current === null) return
-    const endX = e.clientX ?? e.changedTouches?.[0]?.clientX ?? pointerStartX.current
-    const delta = endX - pointerStartX.current
-    pointerStartX.current = null
+    if (startX.current === null) return
+    const dx = e.clientX - startX.current
+    const dy = e.clientY - startY.current
+    startX.current = null
+    startY.current = null
 
-    // only register as swipe if moved more than 60px horizontally
-    if (Math.abs(delta) < 60) return
-    if (delta < 0 && activeTab === 0) setActiveTab(1) // swipe left → Smart Feed
-    if (delta > 0 && activeTab === 1) setActiveTab(0) // swipe right → Upload
+    // Ignore if the gesture is more vertical than horizontal (feed scroll)
+    if (Math.abs(dx) < 60) return
+    if (Math.abs(dy) > Math.abs(dx)) return
+
+    if (dx < 0 && activeTab === 0) setActiveTab(1) // swipe left → Smart Feed
+    if (dx > 0 && activeTab === 1) setActiveTab(0) // swipe right → Upload
   }
 
   return (
@@ -69,8 +73,8 @@ export default function UploadPage() {
             <div className="shell-slide">
               <UploadPanel onGenerate={() => setActiveTab(1)} />
             </div>
-            <div className="shell-slide">
-              <SmartFeedPlaceholder onGoUpload={() => setActiveTab(0)} />
+            <div className="shell-slide shell-slide--feed">
+              <SmartFeed />
             </div>
           </div>
         </div>

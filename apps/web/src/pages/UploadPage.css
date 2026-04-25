@@ -83,3 +83,8 @@
 .shell-slide::-webkit-scrollbar {
   display: none;
 }
+
+/* Feed slide: let SmartFeed's own scroll container take over */
+.shell-slide--feed {
+  overflow: hidden;
+}

@@ -1,0 +1,204 @@
+/* ─── Card ───────────────────────────────────────────────── */
+.feed-card {
+  position: relative;
+  width: 100%;
+  height: 100vh;
+  scroll-snap-align: start;
+  overflow: hidden;
+  display: flex;
+  align-items: flex-end;
+  flex-shrink: 0;
+}
+
+/* Bottom-to-top dark gradient so text stays readable */
+.card-overlay {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    to top,
+    rgba(0,0,0,0.88) 0%,
+    rgba(0,0,0,0.35) 40%,
+    rgba(0,0,0,0.0) 70%,
+    rgba(0,0,0,0.2) 100%
+  );
+  z-index: 1;
+}
+
+/* ─── Center Subtitle ─────────────────────────────────────── */
+.card-subtitle-wrap {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 2;
+  padding: 0 48px;
+  pointer-events: none;
+}
+
+.card-subtitle {
+  font-size: clamp(1.6rem, 4vw, 2.4rem);
+  font-weight: 900;
+  color: #fff;
+  text-align: center;
+  line-height: 1.25;
+  text-shadow: 0 2px 16px rgba(0,0,0,0.8);
+  letter-spacing: -0.5px;
+  /* TikTok-style yellow highlight feel */
+  background: rgba(0,0,0,0.2);
+  padding: 14px 20px;
+  border-radius: 16px;
+  backdrop-filter: blur(4px);
+  border: 1px solid rgba(255,255,255,0.08);
+}
+
+/* ─── Right Action Bar ─────────────────────────────────────── */
+.action-bar {
+  position: absolute;
+  right: 12px;
+  bottom: 100px;
+  z-index: 3;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 20px;
+}
+
+.action-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+}
+
+.action-btn {
+  background: none;
+  border: none;
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  padding: 0;
+  transition: transform 0.15s;
+}
+
+.action-btn:active {
+  transform: scale(0.9);
+}
+
+.action-btn.liked .action-icon {
+  animation: pop 0.2s ease;
+}
+
+@keyframes pop {
+  0% { transform: scale(1); }
+  50% { transform: scale(1.4); }
+  100% { transform: scale(1); }
+}
+
+.action-icon {
+  font-size: 2rem;
+  filter: drop-shadow(0 2px 6px rgba(0,0,0,0.5));
+}
+
+.action-label {
+  font-size: 0.72rem;
+  color: rgba(255,255,255,0.9);
+  font-weight: 600;
+  text-shadow: 0 1px 4px rgba(0,0,0,0.6);
+}
+
+/* ─── Avatar ─────────────────────────────────────────────── */
+.avatar-wrap {
+  position: relative;
+  margin-bottom: 4px;
+}
+
+.avatar {
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, #fe2c55, #ff9a3c);
+  border: 2px solid #fff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.8rem;
+  font-weight: 800;
+  color: #fff;
+}
+
+.avatar-plus {
+  position: absolute;
+  bottom: -6px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: #fe2c55;
+  color: #fff;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.9rem;
+  font-weight: 900;
+  border: 2px solid #000;
+  line-height: 1;
+}
+
+/* ─── Card Info (bottom-left) ─────────────────────────────── */
+.card-info {
+  position: relative;
+  z-index: 3;
+  padding: 0 60px 90px 16px;
+  flex: 1;
+  min-width: 0;
+}
+
+.card-username {
+  font-size: 1rem;
+  font-weight: 800;
+  color: #fff;
+  margin: 0 0 6px;
+}
+
+.card-caption {
+  font-size: 0.9rem;
+  color: rgba(255,255,255,0.9);
+  margin: 0 0 8px;
+  line-height: 1.5;
+  max-width: 260px;
+}
+
+.card-tags {
+  font-size: 0.85rem;
+  color: rgba(255,255,255,0.75);
+  font-weight: 600;
+  margin: 0 0 10px;
+}
+
+.card-audio {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.audio-icon {
+  font-size: 0.85rem;
+  animation: spin 4s linear infinite;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+.audio-label {
+  font-size: 0.78rem;
+  color: rgba(255,255,255,0.7);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 200px;
+}

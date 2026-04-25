@@ -1,0 +1,303 @@
+/* TikTok accent palette */
+:root {
+  --cyan: #69c9d0;
+  --red:  #ee1d52;
+}
+
+/* ─── Panel wrapper ─── */
+.up-panel {
+  display: flex;
+  flex-direction: column;
+  min-height: 100%;
+  padding: 20px 16px 0;
+  gap: 16px;
+}
+
+/* ─── Header ─── */
+.up-header {
+  /* no extra margin — gap handles spacing */
+}
+
+.up-title {
+  font-size: 1.05rem;
+  font-weight: 800;
+  color: #fff;
+  margin-bottom: 4px;
+  letter-spacing: -0.2px;
+}
+
+.up-sub {
+  font-size: 0.78rem;
+  color: rgba(255, 255, 255, 0.35);
+  line-height: 1.5;
+}
+
+/* ─── Mode cards ─── */
+.up-mode-row {
+  display: flex;
+  gap: 10px;
+}
+
+.up-mode-card {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 7px;
+  padding: 16px 10px 14px;
+  background: #111;
+  border: 1.5px solid rgba(255, 255, 255, 0.09);
+  border-radius: 16px;
+  cursor: pointer;
+  transition: border-color 0.2s, background 0.2s;
+}
+
+.up-mode-card--active {
+  border-color: var(--cyan);
+  background: rgba(105, 201, 208, 0.07);
+}
+
+.up-mode-icon {
+  font-size: 1.35rem;
+  line-height: 1;
+}
+
+.up-mode-label {
+  font-size: 0.78rem;
+  font-weight: 700;
+  color: rgba(255, 255, 255, 0.4);
+  letter-spacing: 0.5px;
+}
+
+.up-mode-card--active .up-mode-label {
+  color: var(--cyan);
+}
+
+/* ─── Drop zone ─── */
+.up-dropzone {
+  flex: 1;
+  min-height: 220px;
+  border: 1.5px dashed rgba(255, 255, 255, 0.12);
+  border-radius: 20px;
+  background: #0c0c0c;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: border-color 0.2s, background 0.2s;
+  position: relative;
+  overflow: hidden;
+}
+
+.up-dropzone--over {
+  border-color: var(--cyan);
+  background: rgba(105, 201, 208, 0.04);
+}
+
+.up-dropzone--filled {
+  border-style: solid;
+  border-color: rgba(105, 201, 208, 0.4);
+  background: rgba(105, 201, 208, 0.04);
+}
+
+/* Drop prompt content */
+.up-drop-prompt {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  padding: 24px;
+  text-align: center;
+}
+
+.up-drop-icon {
+  width: 60px;
+  height: 60px;
+  border-radius: 50%;
+  background: rgba(105, 201, 208, 0.1);
+  border: 1.5px solid var(--cyan);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--cyan);
+  margin-bottom: 4px;
+}
+
+.up-drop-label {
+  font-size: 1rem;
+  font-weight: 800;
+  color: #fff;
+}
+
+.up-drop-hint {
+  font-size: 0.78rem;
+  color: rgba(255, 255, 255, 0.3);
+  line-height: 1.6;
+}
+
+.up-drop-cta {
+  font-size: 0.75rem;
+  font-weight: 700;
+  color: var(--cyan);
+  margin-top: 4px;
+}
+
+/* File selected state */
+.up-file-info {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  padding: 24px;
+  text-align: center;
+}
+
+.up-file-thumb {
+  width: 52px;
+  height: 64px;
+  background: rgba(105, 201, 208, 0.12);
+  border: 1.5px solid var(--cyan);
+  border-radius: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.65rem;
+  font-weight: 900;
+  color: var(--cyan);
+  letter-spacing: 1px;
+}
+
+.up-file-name {
+  font-size: 0.88rem;
+  font-weight: 700;
+  color: #fff;
+  word-break: break-all;
+  max-width: 240px;
+}
+
+.up-file-size {
+  font-size: 0.72rem;
+  color: rgba(255, 255, 255, 0.3);
+}
+
+.up-remove {
+  margin-top: 4px;
+  background: transparent;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  color: rgba(255, 255, 255, 0.4);
+  border-radius: 8px;
+  padding: 6px 16px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: border-color 0.15s, color 0.15s;
+}
+
+.up-remove:hover {
+  border-color: rgba(238, 29, 82, 0.4);
+  color: var(--red);
+}
+
+/* ─── Text mode ─── */
+.up-text-wrap {
+  flex: 1;
+  position: relative;
+  min-height: 220px;
+}
+
+.up-textarea {
+  width: 100%;
+  height: 100%;
+  min-height: 220px;
+  background: #0c0c0c;
+  border: 1.5px solid rgba(255, 255, 255, 0.09);
+  border-radius: 20px;
+  color: #fff;
+  font-size: 0.93rem;
+  line-height: 1.75;
+  padding: 18px 18px 40px;
+  resize: none;
+  outline: none;
+  font-family: inherit;
+  transition: border-color 0.2s;
+  box-sizing: border-box;
+  display: block;
+}
+
+.up-textarea::placeholder {
+  color: rgba(255, 255, 255, 0.2);
+}
+
+.up-textarea:focus {
+  border-color: var(--cyan);
+}
+
+.up-char-count {
+  position: absolute;
+  bottom: 14px;
+  right: 16px;
+  font-size: 0.7rem;
+  color: rgba(255, 255, 255, 0.2);
+  pointer-events: none;
+}
+
+/* ─── Generate button ─── */
+.up-generate-wrap {
+  margin-top: auto;   /* push to bottom of flex column */
+  padding: 8px 0 20px;
+  flex-shrink: 0;
+}
+
+.up-generate {
+  width: 100%;
+  padding: 17px;
+  border: none;
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.07);
+  color: rgba(255, 255, 255, 0.25);
+  font-size: 0.98rem;
+  font-weight: 800;
+  cursor: not-allowed;
+  transition: background 0.2s, color 0.2s, transform 0.15s;
+  letter-spacing: 0.2px;
+}
+
+.up-generate--active {
+  background: var(--red);
+  color: #fff;
+  cursor: pointer;
+  box-shadow: 0 4px 20px rgba(238, 29, 82, 0.35);
+}
+
+.up-generate--active:hover {
+  background: #ff2563;
+  transform: translateY(-1px);
+  box-shadow: 0 8px 28px rgba(238, 29, 82, 0.45);
+}
+
+.up-generate--active:active {
+  transform: translateY(0);
+}
+
+/* Loading state */
+.up-btn-loading {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+}
+
+.up-spinner {
+  width: 16px;
+  height: 16px;
+  border: 2px solid rgba(255, 255, 255, 0.25);
+  border-top-color: #fff;
+  border-radius: 50%;
+  animation: up-spin 0.65s linear infinite;
+  display: inline-block;
+  flex-shrink: 0;
+}
+
+@keyframes up-spin {
+  to { transform: rotate(360deg); }
+}

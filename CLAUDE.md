@@ -25,7 +25,7 @@ These are fixed. Do not propose alternatives unless explicitly asked.
 - **Auth**: Firebase Auth (email/password to satisfy the spec, with Google OAuth as a freebie).
 - **Object storage**: GCS — buckets `smartscroll_pdfs`, `smartscroll-gameplay`, `smartscroll-rendered`.
 - **Job runner**: FastAPI `BackgroundTasks` for the hackathon. Cloud Tasks + a separate Cloud Run worker is the upgrade path; do NOT build that now.
-- **Transcription/timestamps**: `faster-whisper` (large-v3) running in the API container. Word-level timestamps required.
+- **Transcription/timestamps**: ElevenLabs TTS with timestamps API (returns word-level timing with audio generation — no separate Whisper step needed).
 - **Video muxing**: FFmpeg via `ffmpeg-python`. Captions burned in via `subtitles` filter from a generated `.ass` file.
 
 ---
@@ -43,8 +43,10 @@ smartscroll/
 │   ├── terraform/      # GCS buckets, Firestore, IAM. Optional for hackathon.
 │   └── docker/         # Dockerfiles for api + web
 ├── scripts/
+│   ├── create_voice.py     # Create ElevenLabs voice via Instant Voice Cloning
+│   ├── pipeline_local.py   # Run the full ingest pipeline on a local PDF for debugging
 │   ├── seed_gameplay.py    # One-time: download N gameplay clips into GCS
-│   └── pipeline_local.py   # Run the full ingest pipeline on a local PDF for debugging
+│   └── test_tts.py         # Test TTS service with word timestamps
 ├── .env.example
 ├── CLAUDE.md           # this file
 └── README.md           # human-facing setup
@@ -64,11 +66,10 @@ PDF upload
   └─> [2] Semantic chunking — see §3.1. Target ~150 spoken words per chunk (~60s @ 150wpm).
   └─> [3] For each chunk, in parallel:
         ├─ [3a] Gemma 4 → rewrite chunk into a TikTok-voice script (see §3.2 for prompt rules)
-        ├─ [3b] ElevenLabs → narration MP3 from the script
-        ├─ [3c] faster-whisper on the MP3 → word-level timestamps
-        ├─ [3d] Pick a random gameplay clip from GCS, trim to audio length
-        ├─ [3e] Generate .ass subtitle file from word timestamps (TikTok-style: 1-3 words at a time, bouncy)
-        └─ [3f] FFmpeg: mux gameplay video + narration audio + burned-in captions → final MP4 to GCS
+        ├─ [3b] ElevenLabs TTS with timestamps → narration MP3 + word-level timing (single API call)
+        ├─ [3c] Pick a random gameplay clip from GCS, trim to audio length
+        ├─ [3d] Generate .ass subtitle file from word timestamps (TikTok-style: 1-3 words at a time, bouncy)
+        └─ [3e] FFmpeg: mux gameplay video + narration audio + burned-in captions → final MP4 to GCS
   └─> [4] Write chunk + video metadata to Firestore. Mark PDF status = ready.
 ```
 
@@ -230,7 +231,7 @@ Use **uv** for Python (not pip, not poetry). Use **pnpm** for JS (not npm). Don'
 
 - ❌ Don't add Redis, Celery, RabbitMQ, Kafka. We have a hackathon deadline.
 - ❌ Don't fetch YouTube videos at request time. Gameplay clips are pre-seeded once via `scripts/seed_gameplay.py`.
-- ❌ Don't generate captions with Gemma. Use Whisper word timestamps. Gemma hallucinates timing.
+- ❌ Don't generate captions with Gemma. Use ElevenLabs word timestamps. Gemma hallucinates timing.
 - ❌ Don't render videos client-side. Pre-render server-side at upload, store final MP4, stream it.
 - ❌ Don't use `setInterval` to poll for upload status in the frontend. Use a Firestore real-time listener on the PDF doc.
 - ❌ Don't put the ElevenLabs key in the frontend. All TTS calls go through `/api/tts` if ever exposed (they shouldn't be — TTS only runs server-side during ingestion).
@@ -270,11 +271,13 @@ Use **uv** for Python (not pip, not poetry). Use **pnpm** for JS (not npm). Don'
 - [ ] Gemma 4 script rewriting — service created at `services/vertex.py`, needs GCP endpoint
 
 ### Not started
-- [ ] ElevenLabs TTS
-- [ ] Whisper word timestamps
 - [ ] FFmpeg video rendering
 - [ ] Feed endpoint
 - [ ] Frontend
+
+### Completed (services)
+- [x] **ElevenLabs TTS with timestamps** — `services/tts.py` generates speech + word-level timing in one call
+- [x] **Voice cloning script** — `scripts/create_voice.py` creates custom voices via IVC
 
 ---
 
@@ -410,12 +413,16 @@ smartscroll/
 │   └── services/
 │       ├── auth.py             # ✅ Dummy user for now
 │       ├── firestore.py        # ✅ Firestore CRUD operations
-│       └── storage.py          # ✅ GCS upload working
+│       ├── storage.py          # ✅ GCS upload working
+│       ├── tts.py              # ✅ ElevenLabs TTS with word timestamps
+│       └── vertex.py           # ✅ Gemma 4 script rewriting
 ├── apps/web/                   # Next.js (empty)
 ├── packages/shared/            # Shared Pydantic models
 ├── scripts/
+│   ├── create_voice.py         # Create ElevenLabs voice via IVC
 │   ├── pipeline_local.py       # Debug pipeline locally
-│   └── seed_gameplay.py        # Seed GCS with gameplay clips
+│   ├── seed_gameplay.py        # Seed GCS with gameplay clips
+│   └── test_tts.py             # Test TTS service
 ├── docs/
 │   └── data-model.md           # Firestore schema documentation
 ├── infra/
@@ -522,3 +529,47 @@ script, version = await rewrite_chunk_to_script(
 )
 ```
 
+---
+
+## 19. ElevenLabs setup
+
+**Service file:** `apps/api/smartscroll/services/tts.py`
+
+### Voice setup
+
+1. Create a custom voice using Instant Voice Cloning:
+```bash
+uv run python scripts/create_voice.py temp/narrator.mp3 --name "SmartScroll Narrator"
+```
+
+2. Copy the voice ID to `.env`:
+```
+ELEVENLABS_VOICE_ID=your_voice_id_here
+```
+
+3. If the voice requires verification, approve it at [ElevenLabs Voice Lab](https://elevenlabs.io/app/voice-lab).
+
+### API usage
+
+The TTS service uses the `/v1/text-to-speech/{voice_id}/with-timestamps` endpoint, which returns both audio and word-level timing in a single call (no Whisper needed).
+
+```python
+from smartscroll.services.tts import generate_speech_with_timestamps, TTSResult
+
+result: TTSResult = await generate_speech_with_timestamps(
+    text="Your script text here...",
+    # voice_id defaults to ELEVENLABS_VOICE_ID from env
+)
+
+# result.audio: bytes (MP3)
+# result.word_timings: list[WordTiming(word, start_time, end_time)]
+# result.duration_ms: int
+```
+
+### Test
+
+```bash
+uv run python scripts/test_tts.py
+```
+
+Output saved to `temp/test_tts_output.mp3`.

@@ -307,3 +307,14 @@
 @keyframes up-spin {
   to { transform: rotate(360deg); }
 }
+
+/* Error message */
+.up-error {
+  font-size: 0.8rem;
+  color: var(--red);
+  background: rgba(238, 29, 82, 0.1);
+  border: 1px solid rgba(238, 29, 82, 0.25);
+  border-radius: 10px;
+  padding: 10px 14px;
+  text-align: center;
+}

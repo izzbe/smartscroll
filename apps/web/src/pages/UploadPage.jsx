@@ -7,6 +7,7 @@ import './UploadPage.css'
 
 export default function UploadPage() {
   const [activeTab, setActiveTab] = useState(0) // 0 = Upload, 1 = Smart Feed
+  const [feedKey, setFeedKey] = useState(0)     // increment to force SmartFeed re-fetch
   const startX = useRef(null)
   const startY = useRef(null)
 
@@ -71,10 +72,10 @@ export default function UploadPage() {
             style={{ transform: `translateX(${activeTab * -50}%)` }}
           >
             <div className="shell-slide">
-              <UploadPanel onGenerate={() => setActiveTab(1)} />
+              <UploadPanel onGenerate={() => { setFeedKey(k => k + 1); setActiveTab(1) }} />
             </div>
             <div className="shell-slide shell-slide--feed">
-              <SmartFeed />
+              <SmartFeed key={feedKey} />
             </div>
           </div>
         </div>

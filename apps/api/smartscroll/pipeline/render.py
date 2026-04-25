@@ -171,7 +171,7 @@ async def render_video(
         narration_path.write_bytes(narration_audio)
 
         captions_path = tmp / "captions.ass"
-        build_ass_captions(word_timings, captions_path, video_caption=video_caption)
+        build_ass_captions(word_timings, captions_path)
         caption_cues = (len(word_timings) + WORDS_PER_CAPTION - 1) // WORDS_PER_CAPTION
         log.info("render_captions_built", cues=caption_cues)
 

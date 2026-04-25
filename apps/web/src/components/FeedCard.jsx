@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useRef, useEffect } from 'react'
 import CommentDrawer from './CommentDrawer'
 import './FeedCard.css'
 
@@ -9,13 +9,68 @@ function fmt(n) {
   return n.toLocaleString()
 }
 
-export default function FeedCard({ item }) {
+// Split a script into [hook sentence, remaining excerpt]
+function splitScript(script) {
+  if (!script) return ['', '']
+  const sentences = script.match(/[^.!?]+[.!?]+/g) ?? []
+  if (sentences.length === 0) return [script.slice(0, 120), '']
+  const hook = sentences[0].trim()
+  const rest = sentences.slice(1, 4).join(' ').trim()
+  return [hook, rest]
+}
+
+// Normalize both real API shape and legacy mock shape into one interface
+function normalize(item) {
+  const [scriptHook, scriptRest] = splitScript(item.script ?? '')
+  return {
+    id:        item.video_id  ?? item.id,
+    pdfId:     item.pdf_id    ?? null,
+    videoUrl:  item.video_url ?? null,
+    topic:     item.video_caption ?? item.topic ?? item.pdf_filename ?? '',
+    subtitle:  item.subtitle  || scriptHook,
+    caption:   item.caption   || scriptRest,
+    tags:      item.tags      ?? '',
+    gradient:  item.gradient  ?? 'linear-gradient(160deg, #1a1a2e 0%, #16213e 40%, #0f3460 100%)',
+    likes:     item.likes     ?? item.view_count ?? 0,
+    comments:  item.comments  ?? 0,
+    saves:     item.saves     ?? 0,
+    shares:    item.shares    ?? 0,
+  }
+}
+
+export default function FeedCard({ item: rawItem }) {
+  const item = normalize(rawItem)
+
   const [liked,    setLiked]    = useState(false)
   const [likeCount, setLikeCount] = useState(item.likes)
   const [saved,    setSaved]    = useState(false)
-  const [saveCount, setSaveCount] = useState(item.saves ?? 0)
+  const [saveCount, setSaveCount] = useState(item.saves)
   const [commentOpen, setCommentOpen] = useState(false)
   const [expanded, setExpanded] = useState(false)
+  const [muted, setMuted] = useState(true)
+  const videoRef = useRef(null)
+
+  // Play/pause video based on visibility
+  useEffect(() => {
+    if (!videoRef.current) return
+    const observer = new IntersectionObserver(
+      ([entry]) => {
+        if (entry.isIntersecting) {
+          videoRef.current?.play().catch(() => {})
+        } else {
+          videoRef.current?.pause()
+        }
+      },
+      { threshold: 0.5 }
+    )
+    observer.observe(videoRef.current)
+    return () => observer.disconnect()
+  }, [item.videoUrl])
+
+  // React's muted prop doesn't reliably sync — drive it via ref
+  useEffect(() => {
+    if (videoRef.current) videoRef.current.muted = muted
+  }, [muted])
 
   function handleLike() {
     const next = !liked
@@ -34,26 +89,52 @@ export default function FeedCard({ item }) {
 
   return (
     <>
-      <div className="fc-card" style={{ background: item.gradient }}>
+      <div
+        className="fc-card"
+        style={item.videoUrl ? { background: '#000' } : { background: item.gradient }}
+      >
+
+        {/* Background video (real content) */}
+        {item.videoUrl && (
+          <video
+            ref={videoRef}
+            className="fc-video"
+            src={item.videoUrl}
+            playsInline
+            muted
+            loop
+          />
+        )}
+
+        {/* Mute / unmute toggle — top-right */}
+        {item.videoUrl && (
+          <button
+            className="fc-mute-btn"
+            onClick={() => setMuted(m => !m)}
+            aria-label={muted ? 'Unmute' : 'Mute'}
+          >
+            {muted ? <MutedIcon /> : <UnmutedIcon />}
+          </button>
+        )}
 
         {/* Bottom gradient overlay */}
         <div className="fc-overlay" />
 
-        {/* ── Brainrot subtitle (center) ── */}
-        <div className="fc-subtitle-zone">
-          <p className="fc-subtitle">{item.subtitle}</p>
-        </div>
+        {/* Brainrot subtitle (center) — only for mock data; real videos have burned-in captions */}
+        {item.subtitle && !item.videoUrl && (
+          <div className="fc-subtitle-zone">
+            <p className="fc-subtitle">{item.subtitle}</p>
+          </div>
+        )}
 
-        {/* ── Right action sidebar ── */}
+        {/* Right action sidebar */}
         <aside className="fc-sidebar">
 
-          {/* Avatar + follow */}
           <div className="fc-avatar-wrap">
             <div className="fc-avatar">SS</div>
             <div className="fc-avatar-plus">+</div>
           </div>
 
-          {/* Like */}
           <button
             className={`fc-action ${liked ? 'fc-action--liked' : ''}`}
             onClick={handleLike}
@@ -63,7 +144,6 @@ export default function FeedCard({ item }) {
             <span className="fc-count">{fmt(likeCount)}</span>
           </button>
 
-          {/* Comment → Ask Gemma */}
           <button
             className="fc-action"
             onClick={() => setCommentOpen(true)}
@@ -73,7 +153,6 @@ export default function FeedCard({ item }) {
             <span className="fc-count">{fmt(item.comments)}</span>
           </button>
 
-          {/* Save / Bookmark */}
           <button
             className={`fc-action ${saved ? 'fc-action--saved' : ''}`}
             onClick={handleSave}
@@ -83,49 +162,49 @@ export default function FeedCard({ item }) {
             <span className="fc-count">{fmt(saveCount)}</span>
           </button>
 
-          {/* Share */}
           <button className="fc-action" aria-label="Share">
             <ShareIcon />
-            <span className="fc-count">{fmt(item.shares ?? 0)}</span>
+            <span className="fc-count">{fmt(item.shares)}</span>
           </button>
 
-          {/* Spinning music disc */}
           <div className="fc-disc" aria-hidden>
             <MusicIcon />
           </div>
         </aside>
 
-        {/* ── Bottom-left content info ── */}
+        {/* Bottom-left content info */}
         <div className="fc-info">
 
-          {/* AI tag pill */}
           <div className="fc-topic-tag">
             <span className="fc-topic-dot" />
             AI Summary · {item.topic}
           </div>
 
-          {/* Username + verified */}
           <div className="fc-username-row">
             <span className="fc-username">@smartscroll</span>
             <VerifiedIcon />
           </div>
 
-          {/* Expandable caption */}
-          <p className="fc-caption">
-            {expanded || !isLong
-              ? item.caption
-              : item.caption.slice(0, captionLimit)}
-            {isLong && !expanded && (
-              <button className="fc-more-btn" onClick={() => setExpanded(true)}>
-                …&nbsp;more
-              </button>
-            )}
-          </p>
+          {item.caption && (
+            <p className="fc-caption">
+              {expanded || !isLong
+                ? item.caption
+                : item.caption.slice(0, captionLimit)}
+              {isLong && !expanded && (
+                <button className="fc-more-btn" onClick={() => setExpanded(true)}>
+                  …&nbsp;more
+                </button>
+              )}
+              {isLong && expanded && (
+                <button className="fc-more-btn" onClick={() => setExpanded(false)}>
+                  &nbsp;less
+                </button>
+              )}
+            </p>
+          )}
 
-          {/* Hashtags */}
-          <p className="fc-tags">{item.tags}</p>
+          {item.tags && <p className="fc-tags">{item.tags}</p>}
 
-          {/* Audio row */}
           <div className="fc-audio-row">
             <NoteIcon />
             <span className="fc-audio-text">Original narration · SmartScroll</span>
@@ -134,10 +213,10 @@ export default function FeedCard({ item }) {
 
       </div>
 
-      {/* Slide-up comment / Ask Gemma drawer */}
       {commentOpen && (
         <CommentDrawer
           topic={item.topic}
+          pdfId={item.pdfId}
           onClose={() => setCommentOpen(false)}
         />
       )}
@@ -145,7 +224,7 @@ export default function FeedCard({ item }) {
   )
 }
 
-/* ── SVG icon components ── */
+/* SVG icon components */
 
 function HeartIcon({ filled }) {
   return (
@@ -208,6 +287,26 @@ function NoteIcon() {
       <path d="M9 18V5l12-2v13" />
       <circle cx="6" cy="18" r="3" fill="#fff" stroke="none"/>
       <circle cx="18" cy="16" r="3" fill="#fff" stroke="none"/>
+    </svg>
+  )
+}
+
+function MutedIcon() {
+  return (
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5" />
+      <line x1="23" y1="9" x2="17" y2="15" />
+      <line x1="17" y1="9" x2="23" y2="15" />
+    </svg>
+  )
+}
+
+function UnmutedIcon() {
+  return (
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5" />
+      <path d="M19.07 4.93a10 10 0 0 1 0 14.14" />
+      <path d="M15.54 8.46a5 5 0 0 1 0 7.07" />
     </svg>
   )
 }

@@ -65,10 +65,12 @@ PDF upload
   └─> [1] Extract full text (PyMuPDF) + structural hints (headings, page breaks)
   └─> [2] Gemma 4 → rewrite entire PDF into a TikTok-voice script (see §3.2 for prompt rules)
   └─> [3] ElevenLabs TTS with timestamps → narration MP3 + word-level timing (single API call)
-  └─> [4] Pick a random gameplay clip from GCS, loop/extend to match audio length
-  └─> [5] Generate .ass subtitle file from word timestamps (TikTok-style: 1-3 words at a time, bouncy)
-  └─> [6] FFmpeg: mux gameplay video + narration audio + burned-in captions → final MP4 to GCS
-  └─> [7] Write video metadata to Firestore. Mark PDF status = ready.
+  └─> [4] Upload narration MP3 to gs://smartscroll-rendered/{uid}/{pdf_id}/narration.mp3
+  └─> [5] Pick a random gameplay clip from gs://smartscroll-gameplay/ (deterministic: md5(pdf_id) % n)
+  └─> [6] Generate .ass subtitle file from word timestamps (TikTok-style: 5 words per cue, centered)
+  └─> [7] FFmpeg: loop gameplay to audio length, scale/crop to 1080×1920, burn captions → MP4
+  └─> [8] Upload final MP4 to gs://smartscroll-rendered/{uid}/{pdf_id}/video.mp4
+  └─> [9] Write video metadata to Firestore (video_gcs_path set). Mark PDF status = ready.
 ```
 
 ### 3.1 Full-PDF processing
@@ -189,7 +191,7 @@ ELEVENLABS_VOICE_ID=              # default narrator voice
 uv sync
 
 # Run API server
-GOOGLE_APPLICATION_CREDENTIALS=./gcp-sa.json uv run uvicorn smartscroll.main:app --reload --port 8000
+uv run uvicorn smartscroll.main:app --reload --port 8000
 
 # Frontend
 cd apps/web
@@ -199,6 +201,8 @@ pnpm dev   # localhost:3000
 # Run the full pipeline on a local PDF without the API
 uv run python scripts/pipeline_local.py path/to/paper.pdf
 ```
+
+`config.py` reads `GOOGLE_APPLICATION_CREDENTIALS` directly from `.env` and injects it into `os.environ` at startup, so no shell prefix is needed. If you need to override with a different key (e.g. for a different GCP project), set it on the command line: `GOOGLE_APPLICATION_CREDENTIALS=./other-key.json uv run ...`
 
 Use **uv** for Python (not pip, not poetry). Use **pnpm** for JS (not npm). Don't switch package managers — lockfile churn ruins hackathons.
 
@@ -257,7 +261,6 @@ Use **uv** for Python (not pip, not poetry). Use **pnpm** for JS (not npm). Don'
 - [x] **Get PDF** — `GET /api/pdfs/{pdf_id}` returns single PDF with status
 
 ### Not started
-- [ ] FFmpeg video rendering (mux gameplay + audio + captions)
 - [ ] Feed endpoint
 - [ ] Frontend
 
@@ -266,7 +269,9 @@ Use **uv** for Python (not pip, not poetry). Use **pnpm** for JS (not npm). Don'
 - [x] **Gemma 4 script rewriting** — `services/vertex.py` rewrites PDF text into TikTok-style scripts
 - [x] **ElevenLabs TTS with timestamps** — `services/tts.py` generates speech + word-level timing in one call
 - [x] **Voice cloning script** — `scripts/create_voice.py` creates custom voices via IVC
-- [x] **Pipeline orchestrator** — `pipeline/orchestrator.py` connects all services end-to-end
+- [x] **Video rendering** — `pipeline/render.py` picks gameplay clip, builds .ass captions, runs FFmpeg, uploads MP4
+- [x] **Gameplay seeding** — `scripts/seed_gameplay.py` downloads 4 YouTube clips at 1080p into GCS
+- [x] **Pipeline orchestrator** — `pipeline/orchestrator.py` connects all services end-to-end (PDF → MP4)
 - [x] **Background processing** — Upload endpoint triggers async pipeline via FastAPI BackgroundTasks
 
 ---
@@ -400,7 +405,8 @@ smartscroll/
 │   ├── models/
 │   │   └── firestore.py        # ✅ Pydantic models (User, PDF, Video)
 │   ├── pipeline/
-│   │   └── orchestrator.py     # ✅ Main pipeline: PDF → text → script → TTS
+│   │   ├── orchestrator.py     # ✅ Main pipeline: PDF → text → script → TTS → render
+│   │   └── render.py           # ✅ FFmpeg: gameplay + narration + .ass captions → MP4
 │   ├── prompts/
 │   │   └── script_rewrite.py   # ✅ Gemma prompt (v3)
 │   ├── routes/
@@ -440,7 +446,7 @@ smartscroll/
 uv sync
 
 # Run API server
-GOOGLE_APPLICATION_CREDENTIALS=./gcp-sa.json uv run uvicorn smartscroll.main:app --reload --port 8000
+uv run uvicorn smartscroll.main:app --reload --port 8000
 
 # Test PDF upload (triggers background processing)
 curl -X POST http://localhost:8000/api/pdfs/upload -F "file=@temp/deep_vol.pdf"
@@ -456,13 +462,13 @@ curl http://localhost:8000/api/pdfs
 
 ```bash
 # Run full pipeline on a local PDF (outputs to ./output/)
-GOOGLE_APPLICATION_CREDENTIALS=./gcp-sa.json uv run python scripts/pipeline_local.py path/to/paper.pdf
+uv run python scripts/pipeline_local.py path/to/paper.pdf
 
 # Specify custom output directory
-GOOGLE_APPLICATION_CREDENTIALS=./gcp-sa.json uv run python scripts/pipeline_local.py path/to/paper.pdf -o ./my_output
+uv run python scripts/pipeline_local.py path/to/paper.pdf -o ./my_output
 
 # Skip TTS (test text extraction + script generation only)
-GOOGLE_APPLICATION_CREDENTIALS=./gcp-sa.json uv run python scripts/pipeline_local.py path/to/paper.pdf --skip-tts
+uv run python scripts/pipeline_local.py path/to/paper.pdf --skip-tts
 ```
 
 Output files saved to `./output/`:
@@ -519,7 +525,7 @@ VERTEX_GEMMA_LOCATION=us-central1
 
 3. Test:
 ```bash
-GOOGLE_APPLICATION_CREDENTIALS=./gcp-sa.json uv run python scripts/pipeline_local.py temp/deep_vol.pdf --skip-tts
+uv run python scripts/pipeline_local.py temp/deep_vol.pdf --skip-tts
 ```
 
 ### Alternative: Deployed endpoint
@@ -588,3 +594,86 @@ uv run python scripts/test_tts.py
 ```
 
 Output saved to `temp/test_tts_output.mp3`.
+
+---
+
+## 20. Video rendering setup
+
+**Service file:** `apps/api/smartscroll/pipeline/render.py`
+
+Requires `ffmpeg` installed on the host machine. On Cloud Run, install via the Dockerfile (`apt-get install ffmpeg`).
+
+### Gameplay clip seeding (one-time)
+
+Clips live in `gs://smartscroll-gameplay/`. Seed them once before the first render:
+
+```bash
+# Create bucket if it doesn't exist yet
+python -c "
+from smartscroll.config import get_settings
+from google.cloud import storage
+s = get_settings()
+client = storage.Client()
+client.bucket(s.gcs_bucket_gameplay).create(location=s.gcp_region)
+"
+
+# Download 4 clips at 1080p and upload to GCS (~10 min)
+uv run python scripts/seed_gameplay.py
+```
+
+Current clips (hardcoded in `seed_gameplay.py`):
+| File | Source |
+|------|--------|
+| `subway_surfers_1.mp4` | Subway Surfers gameplay (portrait, 9:16) |
+| `minecraft_parkour_1.mp4` | Minecraft parkour |
+| `minecraft_parkour_2.mp4` | Minecraft parkour |
+| `minecraft_parkour_3.mp4` | Minecraft parkour |
+
+The seed script skips clips already present in GCS. To force a re-download (e.g. to upgrade quality), delete the blobs first:
+```bash
+gcloud storage rm "gs://smartscroll-gameplay/*"
+uv run python scripts/seed_gameplay.py
+```
+
+### Caption style
+
+Controlled by constants at the top of `render.py`:
+
+| Constant | Value | Effect |
+|----------|-------|--------|
+| `WORDS_PER_CAPTION` | `5` | Words shown per subtitle cue |
+| `OUTPUT_WIDTH` | `1080` | Output pixel width |
+| `OUTPUT_HEIGHT` | `1920` | Output pixel height (9:16 portrait) |
+
+The `.ass` style is: Arial 70pt, bold, white with 5px black outline, **alignment 5** (center of screen). To move captions, change the alignment field in `build_ass_captions`: `2` = bottom-center, `5` = mid-center, `8` = top-center.
+
+### Clip selection
+
+`md5(pdf_id) % len(clips)` — same PDF always gets the same gameplay clip. Deterministic but feels random across different PDFs.
+
+### Test render (no full pipeline needed)
+
+If you already have `output/narration.mp3` and `output/timings.json` from `pipeline_local.py`:
+
+```python
+import asyncio, json
+from pathlib import Path
+from smartscroll.pipeline.render import render_video
+from smartscroll.services.tts import WordTiming
+
+narration = Path("output/narration.mp3").read_bytes()
+timings_raw = json.loads(Path("output/timings.json").read_text())
+word_timings = [WordTiming(word=w["word"], start_time=w["start"], end_time=w["end"]) for w in timings_raw]
+duration_ms = int(timings_raw[-1]["end"] * 1000)
+
+gcs_uri = asyncio.run(render_video(
+    uid="user_demo_123",
+    pdf_id="local_test",
+    narration_audio=narration,
+    word_timings=word_timings,
+    duration_ms=duration_ms,
+))
+print(gcs_uri)
+```
+
+Output lands in `gs://smartscroll-rendered/user_demo_123/local_test/video.mp4`.

@@ -1,5 +1,6 @@
 """Application configuration loaded from environment variables."""
 
+import os
 from functools import lru_cache
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -34,7 +35,29 @@ class Settings(BaseSettings):
     log_level: str = "INFO"
 
 
+def _apply_gcp_credentials_from_env_file() -> None:
+    """Override GOOGLE_APPLICATION_CREDENTIALS from .env so the project key always wins.
+
+    pydantic-settings lets system env vars take precedence over .env, but the GCP SDK
+    reads GOOGLE_APPLICATION_CREDENTIALS directly from os.environ. Reading .env here
+    ensures the project-specific key is used regardless of any stale system env var.
+    """
+    from pathlib import Path
+
+    env_file = Path(".env")
+    if not env_file.exists():
+        return
+    for line in env_file.read_text().splitlines():
+        line = line.strip()
+        if line.startswith("GOOGLE_APPLICATION_CREDENTIALS="):
+            value = line.split("=", 1)[1].strip().strip('"').strip("'")
+            if value:
+                os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = value
+            return
+
+
 @lru_cache
 def get_settings() -> Settings:
     """Get cached settings instance."""
+    _apply_gcp_credentials_from_env_file()
     return Settings()

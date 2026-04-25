@@ -13,6 +13,7 @@ from pathlib import Path
 import structlog
 
 from smartscroll.models.firestore import PDFStatus, Video
+from smartscroll.pipeline.render import render_video
 from smartscroll.services.firestore import FirestoreService, get_firestore_service
 from smartscroll.services.ingestion import extract_full_pdf_text
 from smartscroll.services.storage import StorageService, get_storage_service
@@ -33,6 +34,7 @@ class PipelineResult:
     word_count: int
     duration_ms: int
     narration_gcs_path: str
+    video_gcs_path: str
 
 
 async def download_pdf_from_gcs(
@@ -154,14 +156,25 @@ async def process_pdf(
         )
         log.info("audio_uploaded", gcs_path=narration_gcs_path)
 
-        # Step 6: Create video record in Firestore
-        log.info("step_6_creating_video_record")
+        # Step 6: Render video (gameplay + narration + captions → MP4)
+        log.info("step_6_rendering_video")
+        video_gcs_path = await render_video(
+            uid=uid,
+            pdf_id=pdf_id,
+            narration_audio=tts_result.audio,
+            word_timings=tts_result.word_timings,
+            duration_ms=tts_result.duration_ms,
+        )
+        log.info("video_rendered", gcs_path=video_gcs_path)
+
+        # Step 7: Create video record in Firestore
+        log.info("step_7_creating_video_record")
         video_id = uuid.uuid4().hex
         video = Video(
             uid=uid,
             pdf_id=pdf_id,
             pdf_filename=filename,
-            video_gcs_path="",  # Will be set after video rendering
+            video_gcs_path=video_gcs_path,
             duration_ms=tts_result.duration_ms,
             script=script,
             script_prompt_version=prompt_version,
@@ -170,7 +183,7 @@ async def process_pdf(
         await firestore.create_video(video_id, video)
         log.info("video_record_created", video_id=video_id)
 
-        # Step 7: Update PDF status to ready
+        # Step 8: Update PDF status to ready
         await firestore.update_pdf_status(uid, pdf_id, PDFStatus.READY)
         log.info("pipeline_completed", video_id=video_id)
 
@@ -182,6 +195,7 @@ async def process_pdf(
             word_count=script_word_count,
             duration_ms=tts_result.duration_ms,
             narration_gcs_path=narration_gcs_path,
+            video_gcs_path=video_gcs_path,
         )
 
     except Exception as e:

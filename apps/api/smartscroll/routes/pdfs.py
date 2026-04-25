@@ -97,7 +97,6 @@ async def upload_pdf(
     1. Extract text from the PDF
     2. Generate a TikTok-style script with Gemma
     3. Generate narration audio with ElevenLabs TTS
-
     Poll GET /api/pdfs/{pdf_id} to check processing status.
     """
     if not file.filename or not file.filename.lower().endswith(".pdf"):

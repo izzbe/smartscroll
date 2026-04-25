@@ -18,7 +18,7 @@ from smartscroll.services.firestore import FirestoreService, get_firestore_servi
 from smartscroll.services.ingestion import extract_full_pdf_text
 from smartscroll.services.storage import StorageService, get_storage_service
 from smartscroll.services.tts import TTSResult, generate_speech_with_timestamps
-from smartscroll.services.vertex import rewrite_pdf_to_script
+from smartscroll.services.vertex import generate_video_caption, rewrite_pdf_to_script
 
 logger = structlog.get_logger()
 
@@ -77,6 +77,28 @@ async def upload_audio_to_gcs(
     return f"gs://{settings.gcs_bucket_rendered}/{destination_path}"
 
 
+async def upload_text_to_gcs(
+    storage: StorageService,
+    text: str,
+    destination_path: str,
+) -> str:
+    """Upload a plain-text string to the rendered bucket."""
+    from smartscroll.config import get_settings
+
+    settings = get_settings()
+    client = storage.client
+    bucket = client.bucket(settings.gcs_bucket_rendered)
+    blob = bucket.blob(destination_path)
+
+    loop = asyncio.get_event_loop()
+    await loop.run_in_executor(
+        None,
+        lambda: blob.upload_from_string(text.encode("utf-8"), content_type="text/plain; charset=utf-8"),
+    )
+
+    return f"gs://{settings.gcs_bucket_rendered}/{destination_path}"
+
+
 async def process_pdf(
     uid: str,
     pdf_id: str,
@@ -129,6 +151,12 @@ async def process_pdf(
         # Clean up temp file
         tmp_path.unlink()
 
+        # Step 2b: Upload extracted text to GCS for later use (e.g. chat context)
+        log.info("step_2b_uploading_extracted_text")
+        text_path = f"{uid}/{pdf_id}/extracted_text.txt"
+        extracted_text_gcs_path = await upload_text_to_gcs(storage, pdf_text, text_path)
+        log.info("extracted_text_uploaded", gcs_path=extracted_text_gcs_path)
+
         # Step 3: Generate script with Gemma
         log.info("step_3_generating_script")
         script, prompt_version = await rewrite_pdf_to_script(pdf_text, pdf_id)
@@ -138,6 +166,11 @@ async def process_pdf(
             word_count=script_word_count,
             prompt_version=prompt_version,
         )
+
+        # Step 3b: Generate short title caption for video overlay
+        log.info("step_3b_generating_caption")
+        video_caption = await generate_video_caption(script, pdf_id)
+        log.info("caption_generated", caption=video_caption)
 
         # Step 4: Generate TTS with timestamps
         log.info("step_4_generating_tts")
@@ -164,6 +197,7 @@ async def process_pdf(
             narration_audio=tts_result.audio,
             word_timings=tts_result.word_timings,
             duration_ms=tts_result.duration_ms,
+            video_caption=video_caption,
         )
         log.info("video_rendered", gcs_path=video_gcs_path)
 
@@ -179,6 +213,8 @@ async def process_pdf(
             script=script,
             script_prompt_version=prompt_version,
             word_count=script_word_count,
+            extracted_text_gcs_path=extracted_text_gcs_path,
+            video_caption=video_caption,
         )
         await firestore.create_video(video_id, video)
         log.info("video_record_created", video_id=video_id)

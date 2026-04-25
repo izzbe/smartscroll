@@ -81,6 +81,59 @@ class StorageService:
         return await loop.run_in_executor(None, _list)
 
 
+    async def get_signed_url(self, gcs_uri: str, expiration_seconds: int = 3600) -> str:
+        """Generate a signed URL for a GCS object so clients can stream it directly.
+
+        Args:
+            gcs_uri: Full GCS URI, e.g. gs://smartscroll-rendered/uid/pdf_id/video.mp4
+            expiration_seconds: URL validity window in seconds (default 1 hour)
+
+        Returns:
+            HTTPS signed URL.
+        """
+        import datetime
+
+        if not gcs_uri.startswith("gs://"):
+            raise ValueError(f"Invalid GCS URI: {gcs_uri}")
+
+        without_scheme = gcs_uri[len("gs://"):]
+        bucket_name, _, blob_path = without_scheme.partition("/")
+        bucket = self.client.bucket(bucket_name)
+        blob = bucket.blob(blob_path)
+
+        loop = asyncio.get_event_loop()
+        url: str = await loop.run_in_executor(
+            None,
+            lambda: blob.generate_signed_url(
+                expiration=datetime.timedelta(seconds=expiration_seconds),
+                method="GET",
+                version="v4",
+            ),
+        )
+        return url
+
+    async def download_blob_text(self, gcs_uri: str) -> str:
+        """Download a text blob from any GCS URI (gs://bucket/path).
+
+        Args:
+            gcs_uri: Full GCS URI, e.g. gs://smartscroll-rendered/uid/pdf_id/extracted_text.txt
+
+        Returns:
+            Decoded text content.
+        """
+        if not gcs_uri.startswith("gs://"):
+            raise ValueError(f"Invalid GCS URI: {gcs_uri}")
+
+        without_scheme = gcs_uri[len("gs://"):]
+        bucket_name, _, blob_path = without_scheme.partition("/")
+        bucket = self.client.bucket(bucket_name)
+        blob = bucket.blob(blob_path)
+
+        loop = asyncio.get_event_loop()
+        data: bytes = await loop.run_in_executor(None, blob.download_as_bytes)
+        return data.decode("utf-8")
+
+
 @lru_cache
 def get_storage_service() -> StorageService:
     """Get cached storage service instance."""

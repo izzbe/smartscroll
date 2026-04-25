@@ -52,7 +52,11 @@ def _apply_gcp_credentials_from_env_file() -> None:
         if line.startswith("GOOGLE_APPLICATION_CREDENTIALS="):
             value = line.split("=", 1)[1].strip().strip('"').strip("'")
             if value:
-                os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = value
+                # Resolve relative paths against the .env file's directory so
+                # the key is found regardless of the process working directory.
+                from pathlib import Path as _Path
+                resolved = (_Path(env_file).parent / value).resolve()
+                os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = str(resolved)
             return
 
 

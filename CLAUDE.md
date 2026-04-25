@@ -62,15 +62,17 @@ Ingestion runs when a user uploads a PDF. One PDF = one video (no chunking):
 
 ```
 PDF upload
-  └─> [1] Extract full text (PyMuPDF) + structural hints (headings, page breaks)
-  └─> [2] Gemma 4 → rewrite entire PDF into a TikTok-voice script (see §3.2 for prompt rules)
-  └─> [3] ElevenLabs TTS with timestamps → narration MP3 + word-level timing (single API call)
-  └─> [4] Upload narration MP3 to gs://smartscroll-rendered/{uid}/{pdf_id}/narration.mp3
-  └─> [5] Pick a random gameplay clip from gs://smartscroll-gameplay/ (deterministic: md5(pdf_id) % n)
-  └─> [6] Generate .ass subtitle file from word timestamps (TikTok-style: 5 words per cue, centered)
-  └─> [7] FFmpeg: loop gameplay to audio length, scale/crop to 1080×1920, burn captions → MP4
-  └─> [8] Upload final MP4 to gs://smartscroll-rendered/{uid}/{pdf_id}/video.mp4
-  └─> [9] Write video metadata to Firestore (video_gcs_path set). Mark PDF status = ready.
+  └─> [1]  Extract full text (PyMuPDF) + structural hints (headings, page breaks)
+  └─> [2]  Gemma 4 → rewrite entire PDF into a TikTok-voice script (see §3.2 for prompt rules)
+  └─> [2b] Upload raw extracted text to gs://smartscroll-rendered/{uid}/{pdf_id}/extracted_text.txt
+  └─> [3]  Gemma 4 → generate short punchy title caption (≤12 words) from the script
+  └─> [4]  ElevenLabs TTS with timestamps → narration MP3 + word-level timing (single API call)
+  └─> [5]  Upload narration MP3 to gs://smartscroll-rendered/{uid}/{pdf_id}/narration.mp3
+  └─> [6]  Pick a random gameplay clip from gs://smartscroll-gameplay/ (deterministic: md5(pdf_id) % n)
+  └─> [7]  Generate .ass subtitle file: word-level cues (mid-center) + title caption (top, first 5s)
+  └─> [8]  FFmpeg: loop gameplay to audio length, scale/crop to 1080×1920, burn captions → MP4
+  └─> [9]  Upload final MP4 to gs://smartscroll-rendered/{uid}/{pdf_id}/video.mp4
+  └─> [10] Write video metadata to Firestore (video_gcs_path set). Mark PDF status = ready.
 ```
 
 ### 3.1 Full-PDF processing
@@ -115,10 +117,14 @@ users/{uid}/pdfs/{pdfId}
   uploadedAt, errorMessage?
 
 videos/{videoId}     # one video per PDF, denormalized for fast feed reads
-  uid, pdfId, videoGcsPath, durationMs,
+  uid, pdfId, pdfFilename, videoGcsPath, durationMs,
   script, scriptPromptVersion, wordCount,
+  extractedTextGcsPath,   # gs://smartscroll-rendered/{uid}/{pdf_id}/extracted_text.txt
+  videoCaption,           # short punchy title shown on video (≤12 words)
   createdAt, viewCount, totalWatchMs
 ```
+
+**Firestore query note:** `get_video_by_pdf_id` filters by `uid` only (single-field, no composite index needed) and matches `pdf_id` in Python. Do not add a two-field filter here without first creating a composite index in Firestore.
 
 **Rule:** the feed endpoint reads from `videos/` only. One PDF = one video. No chunking.
 
@@ -129,10 +135,9 @@ videos/{videoId}     # one video per PDF, denormalized for fast feed reads
 For the hackathon, keep it simple and explainable. `GET /api/feed?cursor=...` returns 10 videos for the calling user.
 
 ```
-candidates = videos where uid == current_user
-score(v) = 0.7 * recency_decay(v.createdAt, half_life=2_days)
-        + 0.3 * (1 - normalized_view_count(v))
-shuffle within score buckets (don't return strict ordering — feels deterministic and boring)
+candidates = videos where uid == current_user AND video_gcs_path != ""
+score(v) = recency_decay(v.createdAt, half_life=2_days)
+shuffle within score buckets (rounded to 0.1) using sha256(uid:video_id) as tie-break
 ```
 
 No cross-user discovery for v1. If the demo needs it, we'll add a `public: bool` flag and a separate global feed.
@@ -141,9 +146,7 @@ No cross-user discovery for v1. If the demo needs it, we'll add a `public: bool`
 
 ## 6. Frontend — the scroll
 
-**Stack (actual):** React 18 + Vite, plain CSS modules (no Tailwind). `npm` is the package manager — `pnpm` was not installed on the dev machine.
-
-- One video/card on screen at a time, full-viewport, snap-scroll vertical.
+- One video on screen at a time, full-viewport, snap-scroll vertical.
 - Use the `IntersectionObserver` API + `<video>` with `playsInline muted autoplay loop`.
   - Start muted (browser autoplay policy). Tap-to-unmute on first interaction, then remember preference.
 - **Preload the next 2 videos** (HTML `preload="auto"` on the next two `<video>` tags, hidden). Anything more wastes bandwidth.
@@ -195,10 +198,10 @@ uv sync
 # Run API server
 uv run uvicorn smartscroll.main:app --reload --port 8000
 
-# Frontend (uses npm — pnpm not installed on dev machine)
+# Frontend
 cd apps/web
-npm install
-npm run dev   # localhost:5173
+pnpm install
+pnpm dev   # localhost:3000
 
 # Run the full pipeline on a local PDF without the API
 uv run python scripts/pipeline_local.py path/to/paper.pdf
@@ -228,7 +231,7 @@ Use **uv** for Python (not pip, not poetry). Use **pnpm** for JS (not npm). Don'
 
 - ❌ Don't add Redis, Celery, RabbitMQ, Kafka. We have a hackathon deadline.
 - ❌ Don't fetch YouTube videos at request time. Gameplay clips are pre-seeded once via `scripts/seed_gameplay.py`.
-- ❌ Don't generate captions with Gemma. Use ElevenLabs word timestamps. Gemma hallucinates timing.
+- ❌ Don't use Gemma for word-level subtitle timing. Use ElevenLabs word timestamps — Gemma hallucinates timing. (Gemma IS used for the title caption, which has no timing requirement.)
 - ❌ Don't render videos client-side. Pre-render server-side at upload, store final MP4, stream it.
 - ❌ Don't use `setInterval` to poll for upload status in the frontend. Use a Firestore real-time listener on the PDF doc.
 - ❌ Don't put the ElevenLabs key in the frontend. All TTS calls go through `/api/tts` if ever exposed (they shouldn't be — TTS only runs server-side during ingestion).
@@ -261,31 +264,24 @@ Use **uv** for Python (not pip, not poetry). Use **pnpm** for JS (not npm). Don'
 - [x] **Firestore persistence** — PDFs stored in `users/{uid}/pdfs/{pdfId}`, database ID: `smartscroll`
 - [x] **List PDFs** — `GET /api/pdfs` returns all PDFs for current user
 - [x] **Get PDF** — `GET /api/pdfs/{pdf_id}` returns single PDF with status
+- [x] **Chat / comment section** — `POST /api/chat/{pdf_id}` lets users ask Gemma questions about the PDF; uses raw extracted text as context; supports multi-turn via `history`
 
 ### Not started
-- [ ] Feed endpoint (`GET /api/feed`)
-- [ ] Events endpoint (`POST /api/events`)
-- [ ] Real auth (Firebase) — currently hardcoded `user_demo_123`
-
-### Completed (frontend)
-- [x] **TikTok-style shell** — two-tab swipeable layout (Upload | Smart Feed) at `apps/web/`
-- [x] **Upload panel** — PDF drag-and-drop + text paste, mode picker with SVG icons, generate button
-- [x] **Smart Feed tab** — vertical snap-scroll feed with mock cards (replaces placeholder)
-- [x] **FeedCard** — brainrot subtitle, like/save toggles with animation, expandable caption, topic tag, verified badge, audio row
-- [x] **Ask Gemma drawer** — slide-up comment panel via `createPortal` (escapes transform stacking context), chat bubble UI, placeholder replies
-- [x] **BottomBar** — TikTok-style nav with white create button + `box-shadow` cyan/red offset
-- [x] **TopTabs** — sliding white indicator underline, horizontal swipe-to-switch with direction filtering
-- [x] **Font** — TikTok Sans Variable (`@fontsource-variable/tiktok-sans`), self-hosted via npm
+- [ ] Frontend
 
 ### Completed (services)
 - [x] **PDF text extraction** — `services/ingestion.py` extracts full text with PyMuPDF
+- [x] **Extracted text storage** — pipeline uploads raw text to GCS (`extracted_text.txt`) for chat context
 - [x] **Gemma 4 script rewriting** — `services/vertex.py` rewrites PDF text into TikTok-style scripts
+- [x] **Gemma 4 video caption** — `services/vertex.py` `generate_video_caption()` produces a ≤12-word punchy title
 - [x] **ElevenLabs TTS with timestamps** — `services/tts.py` generates speech + word-level timing in one call
 - [x] **Voice cloning script** — `scripts/create_voice.py` creates custom voices via IVC
-- [x] **Video rendering** — `pipeline/render.py` picks gameplay clip, builds .ass captions, runs FFmpeg, uploads MP4
+- [x] **Video rendering** — `pipeline/render.py` picks gameplay clip, builds .ass captions (word-level + title), runs FFmpeg, uploads MP4
 - [x] **Gameplay seeding** — `scripts/seed_gameplay.py` downloads 4 YouTube clips at 1080p into GCS
 - [x] **Pipeline orchestrator** — `pipeline/orchestrator.py` connects all services end-to-end (PDF → MP4)
 - [x] **Background processing** — Upload endpoint triggers async pipeline via FastAPI BackgroundTasks
+- [x] **Feed endpoint** — `GET /api/feed?cursor=...` returns up to 10 recency-scored videos with 1-hour signed GCS URLs; cursor is base64-encoded offset; skips videos with empty `video_gcs_path`
+- [x] **Signed URL generation** — `storage.get_signed_url()` generates v4 signed URLs so the frontend can stream MP4s directly from GCS
 
 ---
 
@@ -434,29 +430,7 @@ smartscroll/
 │       ├── storage.py          # ✅ GCS upload working
 │       ├── tts.py              # ✅ ElevenLabs TTS with word timestamps
 │       └── vertex.py           # ✅ Gemma 4 script rewriting
-├── apps/web/                   # React 18 + Vite frontend (npm)
-│   ├── src/
-│   │   ├── main.jsx            # Entry — imports TikTok Sans font + App
-│   │   ├── App.jsx             # Router: / → UploadPage, /upload & /feed → redirect
-│   │   ├── index.css           # Global reset + font-family
-│   │   ├── data/
-│   │   │   └── mockFeed.js     # Shared mock feed items (replace with API later)
-│   │   ├── pages/
-│   │   │   ├── UploadPage.jsx  # TikTok shell: status bar + TopTabs + slides + BottomBar
-│   │   │   └── UploadPage.css
-│   │   └── components/
-│   │       ├── TopTabs.jsx     # Upload | Smart Feed tab bar with sliding indicator
-│   │       ├── TopTabs.css
-│   │       ├── UploadPanel.jsx # Create screen: PDF/Text mode + drop zone + generate btn
-│   │       ├── UploadPanel.css
-│   │       ├── SmartFeed.jsx   # Snap-scroll container rendering FeedCards
-│   │       ├── SmartFeed.css
-│   │       ├── FeedCard.jsx    # Full-screen card: subtitle, action bar, caption info
-│   │       ├── FeedCard.css
-│   │       ├── CommentDrawer.jsx  # Ask Gemma slide-up chat panel (rendered via Portal)
-│   │       ├── CommentDrawer.css
-│   │       ├── BottomBar.jsx   # Home/Discover/Create/Inbox/Me nav
-│   │       └── BottomBar.css
+├── apps/web/                   # Next.js (empty)
 ├── packages/shared/            # Shared Pydantic models
 ├── scripts/
 │   ├── create_voice.py         # Create ElevenLabs voice via IVC

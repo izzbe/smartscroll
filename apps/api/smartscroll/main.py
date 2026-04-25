@@ -6,7 +6,7 @@ from typing import AsyncIterator
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from smartscroll.routes import events, feed, health, pdfs
+from smartscroll.routes import chat, feed, health, pdfs
 
 
 @asynccontextmanager
@@ -36,7 +36,7 @@ def create_app() -> FastAPI:
     app.include_router(health.router, tags=["health"])
     app.include_router(pdfs.router, prefix="/api/pdfs", tags=["pdfs"])
     app.include_router(feed.router, prefix="/api/feed", tags=["feed"])
-    app.include_router(events.router, prefix="/api/events", tags=["events"])
+app.include_router(chat.router, prefix="/api/chat", tags=["chat"])
 
     return app
 

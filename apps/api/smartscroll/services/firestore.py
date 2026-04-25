@@ -109,6 +109,22 @@ class FirestoreService:
             lambda: self.db.collection("videos").document(video_id).set(video.model_dump())
         )
 
+    async def get_video_by_pdf_id(self, uid: str, pdf_id: str) -> tuple[str, Video] | None:
+        """Get a video document by its source pdf_id."""
+        # Single-field filter avoids needing a composite Firestore index.
+        # Users have few enough videos that filtering pdf_id in Python is fine.
+        docs = await self._run_sync(
+            lambda: list(
+                self.db.collection("videos")
+                .where(filter=firestore.FieldFilter("uid", "==", uid))
+                .stream()
+            )
+        )
+        for doc in docs:
+            if doc.to_dict().get("pdf_id") == pdf_id:
+                return doc.id, Video(**doc.to_dict())
+        return None
+
     async def list_videos_for_user(self, uid: str, limit: int = 10) -> list[tuple[str, Video]]:
         """List videos for a user's feed."""
         docs = await self._run_sync(
@@ -139,4 +155,7 @@ class FirestoreService:
 @lru_cache
 def get_firestore_service() -> FirestoreService:
     """Get cached Firestore service instance."""
+    # Ensure GOOGLE_APPLICATION_CREDENTIALS is set before the client is created.
+    from smartscroll.config import get_settings
+    get_settings()
     return FirestoreService()

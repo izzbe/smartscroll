@@ -27,8 +27,19 @@ def _seconds_to_ass_ts(seconds: float) -> str:
     return f"{h}:{m:02d}:{int(s):02d}.{cs:02d}"
 
 
-def build_ass_captions(word_timings: list[WordTiming], output_path: Path) -> None:
-    """Write a TikTok-style .ass subtitle file from word-level timings."""
+CAPTION_DISPLAY_SECONDS = 5  # how long the title caption stays on screen
+
+
+def build_ass_captions(
+    word_timings: list[WordTiming],
+    output_path: Path,
+    video_caption: str = "",
+) -> None:
+    """Write a TikTok-style .ass subtitle file from word-level timings.
+
+    If video_caption is provided, it is shown as a title overlay at the top
+    of the screen for the first CAPTION_DISPLAY_SECONDS seconds.
+    """
     header = (
         "[Script Info]\n"
         "ScriptType: v4.00+\n"
@@ -40,15 +51,27 @@ def build_ass_captions(word_timings: list[WordTiming], output_path: Path) -> Non
         "Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour,"
         " Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle,"
         " Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding\n"
-        # White bold text, black outline (5px), mid-center
+        # Default: white bold, black outline (5px), mid-center (alignment 5)
         "Style: Default,Arial,70,&H00FFFFFF,&H000000FF,&H00000000,&H00000000,"
         "1,0,0,0,100,100,0,0,1,5,2,5,40,40,0,1\n"
+        # Title: white bold, black outline (4px), top-center (alignment 8), MarginV=80
+        "Style: Title,Arial,54,&H00FFFFFF,&H000000FF,&H00000000,&H00000000,"
+        "1,0,0,0,100,100,0,0,1,4,2,8,40,40,80,1\n"
         "\n"
         "[Events]\n"
         "Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text\n"
     )
 
     lines = [header]
+
+    # Title caption — shown at top for the first N seconds
+    if video_caption:
+        end_ts = _seconds_to_ass_ts(CAPTION_DISPLAY_SECONDS)
+        # Escape any special ASS characters
+        safe_caption = video_caption.replace("{", "\\{").replace("}", "\\}").replace("\n", " ")
+        lines.append(f"Dialogue: 1,0:00:00.00,{end_ts},Title,,0,0,0,,{safe_caption}\n")
+
+    # Word-level captions
     for i in range(0, len(word_timings), WORDS_PER_CAPTION):
         chunk = word_timings[i : i + WORDS_PER_CAPTION]
         text = " ".join(w.word for w in chunk)
@@ -118,6 +141,7 @@ async def render_video(
     narration_audio: bytes,
     word_timings: list[WordTiming],
     duration_ms: int,
+    video_caption: str = "",
 ) -> str:
     """
     Render final MP4: random gameplay clip + narration + burned-in captions.
@@ -147,7 +171,7 @@ async def render_video(
         narration_path.write_bytes(narration_audio)
 
         captions_path = tmp / "captions.ass"
-        build_ass_captions(word_timings, captions_path)
+        build_ass_captions(word_timings, captions_path, video_caption=video_caption)
         caption_cues = (len(word_timings) + WORDS_PER_CAPTION - 1) // WORDS_PER_CAPTION
         log.info("render_captions_built", cues=caption_cues)
 

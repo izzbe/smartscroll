@@ -414,6 +414,76 @@ async def generate_video_caption(script: str, pdf_id: str) -> str:
     return caption
 
 
+_QUIZ_SYSTEM = """\
+You are a quiz generator for short educational videos. Given a narration script, produce exactly \
+3 multiple-choice questions that test the most important concepts from the content.
+
+Output ONLY a valid JSON array with exactly 3 objects. Each object must have:
+- "question": string
+- "choices": array of exactly 4 strings (no letter prefixes like A/B/C/D)
+- "correct_index": integer 0–3
+
+No markdown, no code fences, no explanation — raw JSON array only.\
+"""
+
+_QUIZ_USER = "Script:\n{script}"
+
+
+async def generate_quiz(script: str, pdf_id: str) -> list[dict]:
+    """Generate 3 multiple-choice quiz questions from the video script.
+
+    Returns a list of dicts with keys: question, choices, correct_index.
+    Returns [] if generation or parsing fails — quiz is optional.
+    """
+    import json as _json
+    import re as _re
+
+    settings = get_settings()
+    log = logger.bind(pdf_id=pdf_id, step="quiz_gen")
+    log.info("generating_quiz")
+
+    prompt = f"{_QUIZ_SYSTEM}\n\n{_QUIZ_USER.format(script=script[:4000])}"
+
+    try:
+        endpoint_value = settings.vertex_gemma_endpoint or DEFAULT_GEMMA_MODEL
+        if _is_endpoint_id(endpoint_value):
+            raw = await _call_deployed_endpoint(prompt)
+        elif _is_maas_model(endpoint_value):
+            raw = await _call_maas_model(prompt, endpoint_value)
+        else:
+            raw = await _call_serverless_model(prompt)
+
+        # Strip markdown code fences if present
+        raw = _re.sub(r"```(?:json)?\s*", "", raw).strip().rstrip("`").strip()
+
+        questions = _json.loads(raw)
+        if not isinstance(questions, list):
+            raise ValueError("Expected a JSON array")
+
+        # Validate and normalise each question
+        validated = []
+        for q in questions[:3]:
+            if (
+                isinstance(q.get("question"), str)
+                and isinstance(q.get("choices"), list)
+                and len(q["choices"]) == 4
+                and isinstance(q.get("correct_index"), int)
+                and 0 <= q["correct_index"] <= 3
+            ):
+                validated.append({
+                    "question": q["question"],
+                    "choices": [str(c) for c in q["choices"]],
+                    "correct_index": q["correct_index"],
+                })
+
+        log.info("quiz_generated", question_count=len(validated))
+        return validated
+
+    except Exception as e:
+        log.warning("quiz_generation_failed", error=str(e))
+        return []
+
+
 async def check_vertex_connection() -> bool:
     """Check if Vertex AI is configured and accessible.
 

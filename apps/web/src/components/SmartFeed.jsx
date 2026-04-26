@@ -15,9 +15,10 @@ export default function SmartFeed({ onGoUpload, creatorUid }) {
   const [pullY,      setPullY]      = useState(0)      // 0 → not pulling
   const [refreshing, setRefreshing] = useState(false)
 
-  const scrollRef = useRef(null)
-  const drag      = useRef({ active: false, startY: 0, startTop: 0, index: 0 })
-  const pullRef   = useRef(0)  // mirrors pullY for use inside pointer handlers
+  const scrollRef    = useRef(null)
+  const drag         = useRef({ active: false, startY: 0, startTop: 0, index: 0 })
+  const pullRef      = useRef(0)  // mirrors pullY for use inside pointer handlers
+  const quizActiveRef = useRef(false)
 
   useEffect(() => {
     getFeed(undefined, creatorUid)
@@ -49,6 +50,7 @@ export default function SmartFeed({ onGoUpload, creatorUid }) {
   }
 
   function onPointerDown(e) {
+    if (quizActiveRef.current) return
     if (e.target.closest('button, a, input, textarea')) return
     const h   = cardH()
     const top = scrollRef.current.scrollTop
@@ -180,7 +182,12 @@ export default function SmartFeed({ onGoUpload, creatorUid }) {
         onPointerCancel={cancel}
       >
         {videos.map(item => (
-          <FeedCard key={item.video_id} item={item} />
+          <FeedCard
+            key={item.video_id}
+            item={item}
+            onQuizStart={() => { quizActiveRef.current = true }}
+            onQuizEnd={() => { quizActiveRef.current = false }}
+          />
         ))}
       </div>
 

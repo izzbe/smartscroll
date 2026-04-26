@@ -90,8 +90,15 @@ def _pick_clip_name(client: gcs.Client, bucket_name: str, pdf_id: str) -> str:
     blobs = list(client.list_blobs(bucket_name))
     if not blobs:
         raise RuntimeError(f"No gameplay clips in gs://{bucket_name}/ — run seed_gameplay.py first")
-    idx = int(hashlib.md5(pdf_id.encode()).hexdigest(), 16) % len(blobs)
-    return blobs[idx].name
+    # Weight subway_surfers clips 3x so they appear ~50% of the time alongside 3 minecraft clips.
+    weighted = []
+    for b in blobs:
+        weighted.append(b)
+        if "subway" in b.name.lower():
+            weighted.append(b)
+            weighted.append(b)
+    idx = int(hashlib.md5(pdf_id.encode()).hexdigest(), 16) % len(weighted)
+    return weighted[idx].name
 
 
 def _download_blob(client: gcs.Client, bucket_name: str, blob_name: str, local_path: Path) -> None:

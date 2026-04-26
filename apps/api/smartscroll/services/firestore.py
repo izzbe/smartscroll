@@ -6,7 +6,7 @@ from functools import lru_cache
 
 from google.cloud import firestore
 
-from smartscroll.models.firestore import PDF, PDFStatus, Follow, User, Video
+from smartscroll.models.firestore import PDF, PDFStatus, Follow, Message, User, Video
 
 
 class FirestoreService:
@@ -212,6 +212,52 @@ class FirestoreService:
             )
         )
         return [doc.to_dict()["following_uid"] for doc in docs]
+
+    # Messages
+
+    async def send_message(
+        self,
+        from_uid: str,
+        from_display_name: str,
+        to_uid: str,
+        video_id: str,
+        video_caption: str,
+        video_gcs_path: str,
+    ) -> str:
+        """Create a message document and return its ID."""
+        import uuid
+        message_id = uuid.uuid4().hex
+        msg = Message(
+            from_uid=from_uid,
+            from_display_name=from_display_name,
+            to_uid=to_uid,
+            video_id=video_id,
+            video_caption=video_caption,
+            video_gcs_path=video_gcs_path,
+        )
+        await self._run_sync(
+            lambda: self.db.collection("messages").document(message_id).set(msg.model_dump())
+        )
+        return message_id
+
+    async def list_inbox(self, uid: str, limit: int = 50) -> list[tuple[str, Message]]:
+        """List messages sent to uid, newest first."""
+        docs = await self._run_sync(
+            lambda: list(
+                self.db.collection("messages")
+                .where(filter=firestore.FieldFilter("to_uid", "==", uid))
+                .order_by("created_at", direction=firestore.Query.DESCENDING)
+                .limit(limit)
+                .stream()
+            )
+        )
+        return [(doc.id, Message(**doc.to_dict())) for doc in docs]
+
+    async def mark_message_read(self, message_id: str) -> None:
+        """Mark a message as read."""
+        await self._run_sync(
+            lambda: self.db.collection("messages").document(message_id).update({"read": True})
+        )
 
     async def upsert_user(self, uid: str, email: str, display_name: str = "") -> User:
         """Create user if not exists, otherwise return existing. Idempotent."""

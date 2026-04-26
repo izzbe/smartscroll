@@ -1,19 +1,35 @@
-import { useState, useRef } from 'react'
+import { useState, useRef, useEffect } from 'react'
 import TopTabs from '../components/TopTabs'
 import UploadPanel from '../components/UploadPanel'
 import SmartFeed from '../components/SmartFeed'
 import BottomBar from '../components/BottomBar'
 import SearchPage from './SearchPage'
+import InboxPage from './InboxPage'
+import { getInbox } from '../api/client'
 import './UploadPage.css'
 
 // Tab indices
 const TAB_UPLOAD = 0
-const TAB_FEED = 1
+const TAB_FEED   = 1
 const TAB_SEARCH = 2
+const TAB_INBOX  = 3
 
 export default function UploadPage() {
-  const [activeTab, setActiveTab] = useState(TAB_UPLOAD)
-  const [feedKey, setFeedKey] = useState(0)
+  const [activeTab,   setActiveTab]   = useState(TAB_UPLOAD)
+  const [feedKey,     setFeedKey]     = useState(0)
+  const [unreadCount, setUnreadCount] = useState(0)
+
+  // Poll unread count every 30s so the badge stays fresh
+  useEffect(() => {
+    function fetchUnread() {
+      getInbox()
+        .then(msgs => setUnreadCount(msgs.filter(m => !m.read).length))
+        .catch(() => {})
+    }
+    fetchUnread()
+    const id = setInterval(fetchUnread, 30_000)
+    return () => clearInterval(id)
+  }, [])
   const startX = useRef(null)
   const startY = useRef(null)
 
@@ -37,8 +53,9 @@ export default function UploadPage() {
     if (dx > 0 && activeTab === TAB_FEED) setActiveTab(TAB_UPLOAD)
   }
 
-  // BottomBar active indicator
-  const activeBar = activeTab === TAB_SEARCH ? 'discover' : 'home'
+  const activeBar =
+    activeTab === TAB_SEARCH ? 'discover' :
+    activeTab === TAB_INBOX  ? 'inbox'    : 'home'
 
   return (
     <div className="shell-outer">
@@ -77,6 +94,10 @@ export default function UploadPage() {
           <div className="shell-search-container">
             <SearchPage />
           </div>
+        ) : activeTab === TAB_INBOX ? (
+          <div className="shell-search-container">
+            <InboxPage key={activeTab} onOpen={() => setUnreadCount(0)} />
+          </div>
         ) : (
           <div
             className="shell-slides-outer"
@@ -100,8 +121,10 @@ export default function UploadPage() {
         {/* Bottom navigation bar */}
         <BottomBar
           activeBar={activeBar}
+          unreadCount={unreadCount}
           onCreateClick={() => setActiveTab(TAB_UPLOAD)}
           onDiscoverClick={() => setActiveTab(activeTab === TAB_SEARCH ? TAB_UPLOAD : TAB_SEARCH)}
+          onInboxClick={() => { setActiveTab(activeTab === TAB_INBOX ? TAB_UPLOAD : TAB_INBOX); setUnreadCount(0) }}
         />
       </div>
     </div>

@@ -8,7 +8,7 @@ const DRAG_DAMP       = 0.82
 const BOUNDS_DAMP     = 0.14
 const PULL_THRESHOLD  = 80   // px of downward pull to trigger refresh
 
-export default function SmartFeed({ onGoUpload }) {
+export default function SmartFeed({ onGoUpload, creatorUid }) {
   const [videos,     setVideos]     = useState([])
   const [loading,    setLoading]    = useState(true)
   const [error,      setError]      = useState(null)
@@ -20,11 +20,11 @@ export default function SmartFeed({ onGoUpload }) {
   const pullRef   = useRef(0)  // mirrors pullY for use inside pointer handlers
 
   useEffect(() => {
-    getFeed()
+    getFeed(undefined, creatorUid)
       .then(data => setVideos(data.videos ?? []))
       .catch(err => setError(err.message))
       .finally(() => setLoading(false))
-  }, [])
+  }, [creatorUid])
 
   function cardH() {
     return scrollRef.current?.clientHeight ?? 0
@@ -39,7 +39,7 @@ export default function SmartFeed({ onGoUpload }) {
     setRefreshing(true)
     snapTo(0)
     try {
-      const data = await getFeed()
+      const data = await getFeed(undefined, creatorUid)
       setVideos(data.videos ?? [])
     } catch {
       // fail silently — existing feed stays visible

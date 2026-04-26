@@ -43,9 +43,12 @@ export async function getPdf(pdfId) {
   return apiFetch(`/api/pdfs/${pdfId}`)
 }
 
-export async function getFeed(cursor) {
-  const url = cursor ? `/api/feed?cursor=${encodeURIComponent(cursor)}` : '/api/feed'
-  return apiFetch(url)
+export async function getFeed(cursor, creatorUid) {
+  const params = new URLSearchParams()
+  if (cursor) params.set('cursor', cursor)
+  if (creatorUid) params.set('creator_uid', creatorUid)
+  const qs = params.toString()
+  return apiFetch(qs ? `/api/feed?${qs}` : '/api/feed')
 }
 
 export async function generateFromTopic(topic, gameplayStyle) {
@@ -89,6 +92,30 @@ export async function followUser(targetUid) {
     const body = await res.json().catch(() => ({ detail: res.statusText }))
     throw new Error(body.detail || 'Follow failed')
   }
+}
+
+// Messages
+
+export async function sendMessage(toUid, videoId, videoCaption, videoGcsPath) {
+  return apiFetch('/api/messages', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      to_uid: toUid,
+      video_id: videoId,
+      video_caption: videoCaption,
+      video_gcs_path: videoGcsPath,
+    }),
+  })
+}
+
+export async function getInbox() {
+  return apiFetch('/api/messages/inbox')
+}
+
+export async function markMessageRead(messageId) {
+  const headers = await authHeaders()
+  await fetch(`/api/messages/${messageId}/read`, { method: 'POST', headers })
 }
 
 export async function unfollowUser(targetUid) {

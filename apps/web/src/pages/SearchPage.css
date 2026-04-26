@@ -7,6 +7,7 @@
   flex-direction: column;
   gap: 16px;
   overflow-y: auto;
+  position: relative;
 }
 
 .search-header {
@@ -90,6 +91,19 @@
   padding: 12px 14px;
 }
 
+.search-user-clickable {
+  background: none;
+  border: none;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex: 1;
+  cursor: pointer;
+  text-align: left;
+  min-width: 0;
+  padding: 0;
+}
+
 .search-user-avatar {
   width: 44px;
   height: 44px;
@@ -115,6 +129,7 @@
 .search-user-name {
   font-size: 15px;
   font-weight: 600;
+  color: #fff;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -145,4 +160,64 @@
   background: #222;
   color: #ccc;
   border: 1px solid #444;
+}
+
+/* ── Profile overlay ── */
+
+.search-profile-overlay {
+  position: absolute;
+  inset: 0;
+  background: #000;
+  display: flex;
+  flex-direction: column;
+  z-index: 10;
+}
+
+.search-profile-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 14px 16px;
+  border-bottom: 1px solid #1a1a1a;
+  flex-shrink: 0;
+}
+
+.search-profile-back {
+  background: none;
+  border: none;
+  color: #fff;
+  cursor: pointer;
+  padding: 4px;
+  display: flex;
+  align-items: center;
+  flex-shrink: 0;
+}
+
+.search-profile-title {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 16px;
+  font-weight: 700;
+  color: #fff;
+}
+
+.search-profile-avatar {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  background: #fe2c55;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 14px;
+  font-weight: 700;
+  color: #fff;
+  flex-shrink: 0;
+}
+
+.search-profile-feed {
+  flex: 1;
+  overflow: hidden;
+  position: relative;
 }

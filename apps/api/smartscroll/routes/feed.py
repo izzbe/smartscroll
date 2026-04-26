@@ -60,13 +60,20 @@ def _decode_cursor(cursor: str) -> int:
 @router.get("", response_model=FeedResponse)
 async def get_feed(
     cursor: str | None = Query(default=None),
+    creator_uid: str | None = Query(default=None),
     uid: str = Depends(get_current_user_id),
     firestore: FirestoreService = Depends(get_firestore_service),
     storage: StorageService = Depends(get_storage_service),
 ) -> FeedResponse:
-    """Return a paginated, recency-scored feed: current user's videos + followed users' videos."""
-    following_uids = await firestore.get_following_uids(uid)
-    all_uids = [uid] + following_uids
+    """Return a paginated, recency-scored feed: current user's videos + followed users' videos.
+
+    Pass creator_uid to fetch only a specific user's videos (for profile views).
+    """
+    if creator_uid:
+        all_uids = [creator_uid]
+    else:
+        following_uids = await firestore.get_following_uids(uid)
+        all_uids = [uid] + following_uids
 
     all_videos = await firestore.list_videos_for_users(all_uids, limit=500)
     ready_videos = [(vid_id, v) for vid_id, v in all_videos if v.video_gcs_path]

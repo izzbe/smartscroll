@@ -1,5 +1,6 @@
 import { useState, useRef, useEffect } from 'react'
 import CommentDrawer from './CommentDrawer'
+import ShareModal from './ShareModal'
 import './FeedCard.css'
 
 function fmt(n) {
@@ -20,19 +21,24 @@ function splitScript(script) {
 
 function normalize(item) {
   const [scriptHook, scriptRest] = splitScript(item.script ?? '')
+  const displayName = item.display_name || ''
   return {
-    id:        item.video_id  ?? item.id,
-    pdfId:     item.pdf_id    ?? null,
-    videoUrl:  item.video_url ?? null,
-    topic:     item.video_caption ?? item.topic ?? item.pdf_filename ?? '',
-    subtitle:  item.subtitle  || scriptHook,
-    caption:   item.caption   || scriptRest,
-    tags:      item.tags      ?? '',
-    gradient:  item.gradient  ?? 'linear-gradient(160deg, #1a1a2e 0%, #16213e 40%, #0f3460 100%)',
-    likes:     item.likes     ?? item.view_count ?? 0,
-    comments:  item.comments  ?? 0,
-    saves:     item.saves     ?? 0,
-    shares:    item.shares    ?? 0,
+    id:          item.video_id  ?? item.id,
+    pdfId:       item.pdf_id    ?? null,
+    videoUrl:    item.video_url ?? null,
+    topic:       item.video_caption ?? item.topic ?? item.pdf_filename ?? '',
+    subtitle:    item.subtitle  || scriptHook,
+    caption:     item.caption   || scriptRest,
+    tags:        item.tags      ?? '',
+    gradient:    item.gradient  ?? 'linear-gradient(160deg, #1a1a2e 0%, #16213e 40%, #0f3460 100%)',
+    likes:       item.likes     ?? item.view_count ?? 0,
+    comments:    item.comments  ?? 0,
+    saves:       item.saves     ?? 0,
+    shares:      item.shares    ?? 0,
+    displayName,
+    avatarLetter:  displayName ? displayName[0].toUpperCase() : 'S',
+    username:      displayName ? `@${displayName}` : '@smartscroll',
+    videoGcsPath:  item.video_gcs_path ?? '',
   }
 }
 
@@ -44,6 +50,7 @@ export default function FeedCard({ item: rawItem }) {
   const [saved,       setSaved]       = useState(false)
   const [saveCount,   setSaveCount]   = useState(item.saves)
   const [commentOpen, setCommentOpen] = useState(false)
+  const [shareOpen,   setShareOpen]   = useState(false)
   const [expanded,    setExpanded]    = useState(false)
   const [muted,       setMuted]       = useState(false)   // audio on by default
   const [playing,     setPlaying]     = useState(false)
@@ -203,7 +210,7 @@ export default function FeedCard({ item: rawItem }) {
         <aside className="fc-sidebar">
 
           <div className="fc-avatar-wrap">
-            <div className="fc-avatar">SS</div>
+            <div className="fc-avatar">{item.avatarLetter}</div>
             <div className="fc-avatar-plus">+</div>
           </div>
 
@@ -234,7 +241,11 @@ export default function FeedCard({ item: rawItem }) {
             <span className="fc-count">{fmt(saveCount)}</span>
           </button>
 
-          <button className="fc-action" aria-label="Share">
+          <button
+            className="fc-action"
+            aria-label="Share"
+            onPointerUp={e => { e.stopPropagation(); setShareOpen(true) }}
+          >
             <ShareIcon />
             <span className="fc-count">{fmt(item.shares)}</span>
           </button>
@@ -253,8 +264,7 @@ export default function FeedCard({ item: rawItem }) {
           </div>
 
           <div className="fc-username-row">
-            <span className="fc-username">@smartscroll</span>
-            <VerifiedIcon />
+            <span className="fc-username">{item.username}</span>
           </div>
 
           {item.caption && (
@@ -307,6 +317,14 @@ export default function FeedCard({ item: rawItem }) {
           topic={item.topic}
           pdfId={item.pdfId}
           onClose={() => setCommentOpen(false)}
+        />
+      )}
+      {shareOpen && (
+        <ShareModal
+          videoId={item.id}
+          videoCaption={item.topic}
+          videoGcsPath={item.videoGcsPath}
+          onClose={() => setShareOpen(false)}
         />
       )}
     </>

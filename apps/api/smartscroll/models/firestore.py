@@ -58,3 +58,16 @@ class Follow(BaseModel):
     follower_uid: str
     following_uid: str
     created_at: datetime = Field(default_factory=datetime.utcnow)
+
+
+class Message(BaseModel):
+    """A video share sent from one user to another."""
+
+    from_uid: str
+    from_display_name: str = ""
+    to_uid: str
+    video_id: str
+    video_caption: str = ""
+    video_gcs_path: str = ""
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+    read: bool = False

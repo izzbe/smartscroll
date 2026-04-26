@@ -1,0 +1,197 @@
+.sm-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.6);
+  z-index: 100;
+  opacity: 0;
+  transition: opacity 0.28s ease;
+}
+
+.sm-overlay--in {
+  opacity: 1;
+}
+
+.sm-panel {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  background: #111;
+  border-radius: 20px 20px 0 0;
+  padding: 0 0 32px;
+  transform: translateY(100%);
+  transition: transform 0.28s cubic-bezier(0.32, 0.72, 0, 1);
+  max-height: 70vh;
+  display: flex;
+  flex-direction: column;
+}
+
+.sm-panel--in {
+  transform: translateY(0);
+}
+
+/* Desktop: pin to the bottom of the 390px phone frame */
+@media (min-width: 640px) {
+  .sm-panel {
+    left: 50%;
+    right: auto;
+    width: 390px;
+    bottom: calc(50vh - 422px);
+    transform: translateX(-50%) translateY(100%);
+  }
+
+  .sm-panel--in {
+    transform: translateX(-50%) translateY(0);
+  }
+}
+
+.sm-handle {
+  width: 36px;
+  height: 4px;
+  background: #333;
+  border-radius: 2px;
+  margin: 12px auto 0;
+  flex-shrink: 0;
+}
+
+.sm-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 20px 10px;
+  flex-shrink: 0;
+}
+
+.sm-title {
+  font-size: 16px;
+  font-weight: 700;
+  color: #fff;
+}
+
+.sm-close {
+  background: none;
+  border: none;
+  color: #888;
+  cursor: pointer;
+  padding: 4px;
+  display: flex;
+  align-items: center;
+}
+
+.sm-video-label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 20px 12px;
+  flex-shrink: 0;
+}
+
+.sm-video-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #fe2c55;
+  flex-shrink: 0;
+}
+
+.sm-video-caption {
+  font-size: 13px;
+  color: #888;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.sm-loading,
+.sm-empty {
+  color: #555;
+  font-size: 14px;
+  text-align: center;
+  padding: 32px 0;
+}
+
+.sm-list {
+  list-style: none;
+  margin: 0;
+  padding: 0 16px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.sm-user {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  background: #1a1a1a;
+  border-radius: 12px;
+  padding: 12px 14px;
+}
+
+.sm-avatar {
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  background: #fe2c55;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 16px;
+  font-weight: 700;
+  color: #fff;
+  flex-shrink: 0;
+}
+
+.sm-user-info {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.sm-user-name {
+  font-size: 14px;
+  font-weight: 600;
+  color: #fff;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.sm-user-email {
+  font-size: 12px;
+  color: #555;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.sm-send-btn {
+  background: #fe2c55;
+  border: none;
+  border-radius: 8px;
+  color: #fff;
+  font-size: 13px;
+  font-weight: 700;
+  padding: 8px 18px;
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: background 0.15s, opacity 0.15s;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 58px;
+}
+
+.sm-send-btn--sent {
+  background: #1a3a1a;
+  color: #4caf50;
+  cursor: default;
+}
+
+.sm-send-btn:disabled:not(.sm-send-btn--sent) {
+  opacity: 0.5;
+  cursor: default;
+}

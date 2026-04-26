@@ -31,6 +31,20 @@
   color: #fff;
 }
 
+.bbar-badge {
+  position: absolute;
+  top: 0;
+  right: 6px;
+  background: #fe2c55;
+  color: #fff;
+  font-size: 9px;
+  font-weight: 700;
+  padding: 1px 4px;
+  border-radius: 8px;
+  line-height: 1.4;
+  pointer-events: none;
+}
+
 .bbar-label {
   font-size: 0.6rem;
   font-weight: 600;

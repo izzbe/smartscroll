@@ -1,6 +1,6 @@
 import './BottomBar.css'
 
-export default function BottomBar({ onCreateClick, onDiscoverClick, activeBar }) {
+export default function BottomBar({ onCreateClick, onDiscoverClick, onInboxClick, activeBar, unreadCount = 0 }) {
   return (
     <nav className="bbar">
       <button className={`bbar-item ${activeBar === 'home' ? 'bbar-item--active' : ''}`} onClick={onCreateClick}>
@@ -19,8 +19,11 @@ export default function BottomBar({ onCreateClick, onDiscoverClick, activeBar })
         </div>
       </button>
 
-      <button className="bbar-item">
+      <button className={`bbar-item ${activeBar === 'inbox' ? 'bbar-item--active' : ''}`} onClick={onInboxClick} style={{ position: 'relative' }}>
         <InboxIcon />
+        {unreadCount > 0 && (
+          <span className="bbar-badge">{unreadCount > 9 ? '9+' : unreadCount}</span>
+        )}
         <span className="bbar-label">Inbox</span>
       </button>
 

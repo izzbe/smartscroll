@@ -1,10 +1,37 @@
 // All calls go to /api, proxied to http://localhost:8000 by Vite in dev.
+import { getAuth } from 'firebase/auth'
+import { firebaseApp } from '../firebase'
+
+async function _getToken() {
+  const user = getAuth(firebaseApp).currentUser
+  if (!user) return null
+  return user.getIdToken()
+}
+
+async function authHeaders(extra = {}) {
+  const token = await _getToken()
+  return token
+    ? { Authorization: `Bearer ${token}`, ...extra }
+    : { ...extra }
+}
+
+async function apiFetch(url, options = {}) {
+  const headers = await authHeaders(options.headers)
+  const res = await fetch(url, { ...options, headers })
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({ detail: res.statusText }))
+    throw new Error(body.detail || `${res.status} ${res.statusText}`)
+  }
+  return res.json()
+}
 
 export async function uploadPdf(file, gameplayStyle) {
   const form = new FormData()
   form.append('file', file)
   if (gameplayStyle) form.append('gameplay_style', gameplayStyle)
-  const res = await fetch('/api/pdfs/upload', { method: 'POST', body: form })
+  const token = await getIdToken()
+  const headers = token ? { Authorization: `Bearer ${token}` } : {}
+  const res = await fetch('/api/pdfs/upload', { method: 'POST', body: form, headers })
   if (!res.ok) {
     const body = await res.json().catch(() => ({ detail: res.statusText }))
     throw new Error(body.detail || 'Upload failed')
@@ -13,43 +40,62 @@ export async function uploadPdf(file, gameplayStyle) {
 }
 
 export async function getPdf(pdfId) {
-  const res = await fetch(`/api/pdfs/${pdfId}`)
-  if (!res.ok) throw new Error('Failed to get PDF status')
-  return res.json()
+  return apiFetch(`/api/pdfs/${pdfId}`)
 }
 
 export async function getFeed(cursor) {
   const url = cursor ? `/api/feed?cursor=${encodeURIComponent(cursor)}` : '/api/feed'
-  const res = await fetch(url)
-  if (!res.ok) throw new Error('Failed to load feed')
-  return res.json()
+  return apiFetch(url)
 }
 
 export async function generateFromTopic(topic, gameplayStyle) {
-  const res = await fetch('/api/topics/generate', {
+  return apiFetch('/api/topics/generate', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ topic, gameplay_style: gameplayStyle }),
   })
-  if (!res.ok) {
-    const body = await res.json().catch(() => ({ detail: res.statusText }))
-    throw new Error(body.detail || 'Failed to start topic research')
-  }
-  return res.json()  // { topic_id, uid, status }
 }
 
 export async function getTopicStatus(topicId) {
-  const res = await fetch(`/api/topics/${topicId}`)
-  if (!res.ok) throw new Error('Failed to get topic status')
-  return res.json()  // { topic_id, topic, status, error_message }
+  return apiFetch(`/api/topics/${topicId}`)
 }
 
 export async function sendChat(pdfId, message, history) {
-  const res = await fetch(`/api/chat/${pdfId}`, {
+  return apiFetch(`/api/chat/${pdfId}`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ message, history }),
   })
-  if (!res.ok) throw new Error('Chat request failed')
-  return res.json()
+}
+
+// User / social
+
+export async function upsertMe(email, displayName = '') {
+  return apiFetch('/api/users/me', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ email, display_name: displayName }),
+  })
+}
+
+export async function listUsers() {
+  return apiFetch('/api/users')
+}
+
+export async function followUser(targetUid) {
+  const headers = await authHeaders()
+  const res = await fetch(`/api/users/${targetUid}/follow`, { method: 'POST', headers })
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({ detail: res.statusText }))
+    throw new Error(body.detail || 'Follow failed')
+  }
+}
+
+export async function unfollowUser(targetUid) {
+  const headers = await authHeaders()
+  const res = await fetch(`/api/users/${targetUid}/follow`, { method: 'DELETE', headers })
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({ detail: res.statusText }))
+    throw new Error(body.detail || 'Unfollow failed')
+  }
 }

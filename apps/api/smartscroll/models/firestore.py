@@ -46,6 +46,15 @@ class Video(BaseModel):
     word_count: int = 0
     extracted_text_gcs_path: str = ""
     video_caption: str = ""
+    display_name: str = ""
     created_at: datetime = Field(default_factory=datetime.utcnow)
     view_count: int = 0
     total_watch_ms: int = 0
+
+
+class Follow(BaseModel):
+    """Follow relationship between two users."""
+
+    follower_uid: str
+    following_uid: str
+    created_at: datetime = Field(default_factory=datetime.utcnow)

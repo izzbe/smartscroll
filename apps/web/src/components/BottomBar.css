@@ -27,6 +27,10 @@
   color: rgba(255, 255, 255, 0.8);
 }
 
+.bbar-item--active {
+  color: #fff;
+}
+
 .bbar-label {
   font-size: 0.6rem;
   font-weight: 600;

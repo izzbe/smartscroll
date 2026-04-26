@@ -6,6 +6,7 @@ export default function UploadPanel({ onGenerate }) {
   const [mode, setMode] = useState('pdf')
   const [pdfFile, setPdfFile] = useState(null)
   const [text, setText] = useState('')
+  const [gameplayStyle, setGameplayStyle] = useState('subway_surfers')
   const [loading, setLoading] = useState(false)
   const [loadingMsg, setLoadingMsg] = useState('')
   const [error, setError] = useState(null)
@@ -34,7 +35,7 @@ export default function UploadPanel({ onGenerate }) {
     if (mode === 'pdf') {
       try {
         setLoadingMsg('Uploading…')
-        const { pdf_id } = await uploadPdf(pdfFile)
+        const { pdf_id } = await uploadPdf(pdfFile, gameplayStyle)
 
         setLoadingMsg('Processing your PDF… this may take a minute')
         const deadline = Date.now() + 300_000
@@ -54,7 +55,7 @@ export default function UploadPanel({ onGenerate }) {
     } else {
       try {
         setLoadingMsg('Researching your topic…')
-        const { topic_id } = await generateFromTopic(text.trim())
+        const { topic_id } = await generateFromTopic(text.trim(), gameplayStyle)
 
         setLoadingMsg('Building your video… this may take a minute')
         const deadline = Date.now() + 300_000
@@ -98,6 +99,25 @@ export default function UploadPanel({ onGenerate }) {
         >
           <TextIcon />
           <span className="up-mode-label">Text</span>
+        </button>
+      </div>
+
+      {/* Gameplay style picker */}
+      <div className="up-section-label">Background</div>
+      <div className="up-mode-row">
+        <button
+          className={`up-mode-card ${gameplayStyle === 'subway_surfers' ? 'up-mode-card--active' : ''}`}
+          onClick={() => setGameplayStyle('subway_surfers')}
+        >
+          <SubwayIcon />
+          <span className="up-mode-label">Subway Surfers</span>
+        </button>
+        <button
+          className={`up-mode-card ${gameplayStyle === 'minecraft' ? 'up-mode-card--active' : ''}`}
+          onClick={() => setGameplayStyle('minecraft')}
+        >
+          <MinecraftIcon />
+          <span className="up-mode-label">Minecraft</span>
         </button>
       </div>
 
@@ -196,6 +216,26 @@ function PdfIcon() {
       <polyline points="14 2 14 8 20 8" />
       <line x1="8" y1="13" x2="16" y2="13" />
       <line x1="8" y1="17" x2="13" y2="17" />
+    </svg>
+  )
+}
+
+function SubwayIcon() {
+  return (
+    <svg className="up-mode-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+      <circle cx="12" cy="12" r="10" />
+      <path d="M8 12h8M12 8l4 4-4 4" />
+    </svg>
+  )
+}
+
+function MinecraftIcon() {
+  return (
+    <svg className="up-mode-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+      <rect x="3" y="3" width="7" height="7" />
+      <rect x="14" y="3" width="7" height="7" />
+      <rect x="3" y="14" width="7" height="7" />
+      <rect x="14" y="14" width="7" height="7" />
     </svg>
   )
 }

@@ -21,6 +21,7 @@ router = APIRouter()
 
 class TopicGenerateRequest(BaseModel):
     topic: str
+    gameplay_style: str | None = None
 
 
 class TopicGenerateResponse(BaseModel):
@@ -71,6 +72,7 @@ async def generate_from_topic(
         uid=uid,
         topic_id=topic_id,
         topic=topic,
+        gameplay_style=body.gameplay_style,
     )
 
     logger.info("topic_submitted", uid=uid, topic_id=topic_id, topic=topic[:80])

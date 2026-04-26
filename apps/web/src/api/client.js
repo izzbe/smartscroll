@@ -1,8 +1,9 @@
 // All calls go to /api, proxied to http://localhost:8000 by Vite in dev.
 
-export async function uploadPdf(file) {
+export async function uploadPdf(file, gameplayStyle) {
   const form = new FormData()
   form.append('file', file)
+  if (gameplayStyle) form.append('gameplay_style', gameplayStyle)
   const res = await fetch('/api/pdfs/upload', { method: 'POST', body: form })
   if (!res.ok) {
     const body = await res.json().catch(() => ({ detail: res.statusText }))
@@ -24,11 +25,11 @@ export async function getFeed(cursor) {
   return res.json()
 }
 
-export async function generateFromTopic(topic) {
+export async function generateFromTopic(topic, gameplayStyle) {
   const res = await fetch('/api/topics/generate', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ topic }),
+    body: JSON.stringify({ topic, gameplay_style: gameplayStyle }),
   })
   if (!res.ok) {
     const body = await res.json().catch(() => ({ detail: res.statusText }))

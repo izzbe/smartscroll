@@ -86,19 +86,17 @@ def build_ass_captions(
     output_path.write_text("".join(lines), encoding="utf-8")
 
 
-def _pick_clip_name(client: gcs.Client, bucket_name: str, pdf_id: str) -> str:
+def _pick_clip_name(client: gcs.Client, bucket_name: str, pdf_id: str, gameplay_style: str | None = None) -> str:
     blobs = list(client.list_blobs(bucket_name))
     if not blobs:
         raise RuntimeError(f"No gameplay clips in gs://{bucket_name}/ — run seed_gameplay.py first")
-    # Weight subway_surfers clips 3x so they appear ~50% of the time alongside 3 minecraft clips.
-    weighted = []
-    for b in blobs:
-        weighted.append(b)
-        if "subway" in b.name.lower():
-            weighted.append(b)
-            weighted.append(b)
-    idx = int(hashlib.md5(pdf_id.encode()).hexdigest(), 16) % len(weighted)
-    return weighted[idx].name
+    if gameplay_style:
+        keyword = "subway" if gameplay_style == "subway_surfers" else "minecraft"
+        filtered = [b for b in blobs if keyword in b.name.lower()]
+        if filtered:
+            blobs = filtered
+    idx = int(hashlib.md5(pdf_id.encode()).hexdigest(), 16) % len(blobs)
+    return blobs[idx].name
 
 
 def _download_blob(client: gcs.Client, bucket_name: str, blob_name: str, local_path: Path) -> None:
@@ -184,6 +182,7 @@ async def render_video(
     word_timings: list[WordTiming],
     duration_ms: int,
     video_caption: str = "",
+    gameplay_style: str | None = None,
 ) -> str:
     """
     Render final MP4: random gameplay clip + narration + burned-in captions.
@@ -201,7 +200,7 @@ async def render_video(
 
         log.info("render_picking_clip")
         clip_name = await loop.run_in_executor(
-            None, _pick_clip_name, client, settings.gcs_bucket_gameplay, pdf_id
+            None, _pick_clip_name, client, settings.gcs_bucket_gameplay, pdf_id, gameplay_style
         )
 
         cached_clip = GAMEPLAY_CACHE_DIR / clip_name

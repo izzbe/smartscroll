@@ -107,6 +107,7 @@ async def process_pdf(
     filename: str,
     firestore: FirestoreService | None = None,
     storage: StorageService | None = None,
+    gameplay_style: str | None = None,
 ) -> PipelineResult:
     """
     Full pipeline: PDF → text → script → TTS → stored audio.
@@ -206,6 +207,7 @@ async def process_pdf(
             narration_audio=tts_result.audio,
             word_timings=tts_result.word_timings,
             duration_ms=tts_result.duration_ms,
+            gameplay_style=gameplay_style,
         )
         log.info("video_rendered", gcs_path=video_gcs_path)
 
@@ -256,6 +258,7 @@ async def process_topic(
     topic: str,
     firestore: FirestoreService | None = None,
     storage: StorageService | None = None,
+    gameplay_style: str | None = None,
 ) -> PipelineResult:
     """Full pipeline: topic → Backboard research → Gemma script → TTS → video.
 
@@ -317,6 +320,7 @@ async def process_topic(
             narration_audio=tts_result.audio,
             word_timings=tts_result.word_timings,
             duration_ms=tts_result.duration_ms,
+            gameplay_style=gameplay_style,
         )
         log.info("video_rendered", gcs_path=video_gcs_path)
 
@@ -357,10 +361,10 @@ async def process_topic(
         raise
 
 
-async def process_topic_background(uid: str, topic_id: str, topic: str) -> None:
+async def process_topic_background(uid: str, topic_id: str, topic: str, gameplay_style: str | None = None) -> None:
     """Background task wrapper for process_topic."""
     try:
-        await process_topic(uid, topic_id, topic)
+        await process_topic(uid, topic_id, topic, gameplay_style=gameplay_style)
     except Exception as e:
         logger.error("background_topic_pipeline_failed", uid=uid, topic_id=topic_id, error=str(e))
 
@@ -370,6 +374,7 @@ async def process_pdf_background(
     pdf_id: str,
     gcs_path: str,
     filename: str,
+    gameplay_style: str | None = None,
 ) -> None:
     """
     Background task wrapper for process_pdf.
@@ -378,7 +383,7 @@ async def process_pdf_background(
     Errors are logged and stored in Firestore, not raised.
     """
     try:
-        await process_pdf(uid, pdf_id, gcs_path, filename)
+        await process_pdf(uid, pdf_id, gcs_path, filename, gameplay_style=gameplay_style)
     except Exception as e:
         # Error already logged and stored in Firestore by process_pdf
         logger.error(

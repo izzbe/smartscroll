@@ -4,7 +4,7 @@ import json
 import uuid
 
 import structlog
-from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, UploadFile
+from fastapi import APIRouter, BackgroundTasks, Depends, Form, HTTPException, UploadFile
 from pydantic import BaseModel
 
 from smartscroll.models.firestore import PDF, PDFStatus
@@ -92,6 +92,7 @@ async def get_pdf(
 async def upload_pdf(
     file: UploadFile,
     background_tasks: BackgroundTasks,
+    gameplay_style: str | None = Form(None),
     uid: str = Depends(get_current_user_id),
     storage: StorageService = Depends(get_storage_service),
     firestore: FirestoreService = Depends(get_firestore_service),
@@ -136,6 +137,7 @@ async def upload_pdf(
         pdf_id=pdf_id,
         gcs_path=gcs_uri,
         filename=file.filename,
+        gameplay_style=gameplay_style,
     )
 
     return UploadResponse(

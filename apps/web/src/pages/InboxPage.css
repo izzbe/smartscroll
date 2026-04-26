@@ -8,6 +8,10 @@
   overflow-y: auto;
 }
 
+.inbox-page--playing {
+  overflow: hidden;
+}
+
 .inbox-header {
   padding: 20px 16px 12px;
   flex-shrink: 0;

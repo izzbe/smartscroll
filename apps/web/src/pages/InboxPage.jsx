@@ -28,7 +28,7 @@ export default function InboxPage() {
   const unread = messages.filter(m => !m.read).length
 
   return (
-    <div className="inbox-page">
+    <div className={`inbox-page${playing ? ' inbox-page--playing' : ''}`}>
       <div className="inbox-header">
         <h2 className="inbox-title">
           Inbox

@@ -29,7 +29,7 @@ export async function uploadPdf(file, gameplayStyle) {
   const form = new FormData()
   form.append('file', file)
   if (gameplayStyle) form.append('gameplay_style', gameplayStyle)
-  const token = await getIdToken()
+  const token = await _getToken()
   const headers = token ? { Authorization: `Bearer ${token}` } : {}
   const res = await fetch('/api/pdfs/upload', { method: 'POST', body: form, headers })
   if (!res.ok) {

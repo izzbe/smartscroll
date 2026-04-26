@@ -88,3 +88,16 @@
 .shell-slide--feed {
   overflow: hidden;
 }
+
+/* Search / Discover full-height container */
+.shell-search-container {
+  flex: 1;
+  overflow-y: auto;
+  overflow-x: hidden;
+  scrollbar-width: none;
+  -webkit-overflow-scrolling: touch;
+}
+
+.shell-search-container::-webkit-scrollbar {
+  display: none;
+}

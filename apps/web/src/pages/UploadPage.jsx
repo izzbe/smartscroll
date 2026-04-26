@@ -3,11 +3,17 @@ import TopTabs from '../components/TopTabs'
 import UploadPanel from '../components/UploadPanel'
 import SmartFeed from '../components/SmartFeed'
 import BottomBar from '../components/BottomBar'
+import SearchPage from './SearchPage'
 import './UploadPage.css'
 
+// Tab indices
+const TAB_UPLOAD = 0
+const TAB_FEED = 1
+const TAB_SEARCH = 2
+
 export default function UploadPage() {
-  const [activeTab, setActiveTab] = useState(0) // 0 = Upload, 1 = Smart Feed
-  const [feedKey, setFeedKey] = useState(0)     // increment to force SmartFeed re-fetch
+  const [activeTab, setActiveTab] = useState(TAB_UPLOAD)
+  const [feedKey, setFeedKey] = useState(0)
   const startX = useRef(null)
   const startY = useRef(null)
 
@@ -23,13 +29,16 @@ export default function UploadPage() {
     startX.current = null
     startY.current = null
 
-    // Ignore if the gesture is more vertical than horizontal (feed scroll)
+    // Ignore gestures more vertical than horizontal, or too small
     if (Math.abs(dx) < 60) return
     if (Math.abs(dy) > Math.abs(dx)) return
-
-    if (dx < 0 && activeTab === 0) setActiveTab(1) // swipe left → Smart Feed
-    if (dx > 0 && activeTab === 1) setActiveTab(0) // swipe right → Upload
+    // Only swipe between upload and feed tabs (not into search)
+    if (dx < 0 && activeTab === TAB_UPLOAD) setActiveTab(TAB_FEED)
+    if (dx > 0 && activeTab === TAB_FEED) setActiveTab(TAB_UPLOAD)
   }
+
+  // BottomBar active indicator
+  const activeBar = activeTab === TAB_SEARCH ? 'discover' : 'home'
 
   return (
     <div className="shell-outer">
@@ -58,30 +67,42 @@ export default function UploadPage() {
           </div>
         </div>
 
-        {/* Top tab switcher */}
-        <TopTabs activeTab={activeTab} onTabChange={setActiveTab} />
+        {/* Top tab switcher — hide when on search */}
+        {activeTab !== TAB_SEARCH && (
+          <TopTabs activeTab={activeTab} onTabChange={setActiveTab} />
+        )}
 
-        {/* Swipeable two-page carousel */}
-        <div
-          className="shell-slides-outer"
-          onPointerDown={onPointerDown}
-          onPointerUp={onPointerUp}
-        >
+        {/* Main content area */}
+        {activeTab === TAB_SEARCH ? (
+          <div className="shell-search-container">
+            <SearchPage />
+          </div>
+        ) : (
           <div
-            className="shell-slides-track"
-            style={{ transform: `translateX(${activeTab * -50}%)` }}
+            className="shell-slides-outer"
+            onPointerDown={onPointerDown}
+            onPointerUp={onPointerUp}
           >
-            <div className="shell-slide">
-              <UploadPanel onGenerate={() => { setFeedKey(k => k + 1); setActiveTab(1) }} />
-            </div>
-            <div className="shell-slide shell-slide--feed">
-              <SmartFeed key={feedKey} />
+            <div
+              className="shell-slides-track"
+              style={{ transform: `translateX(${activeTab * -50}%)` }}
+            >
+              <div className="shell-slide">
+                <UploadPanel onGenerate={() => { setFeedKey(k => k + 1); setActiveTab(TAB_FEED) }} />
+              </div>
+              <div className="shell-slide shell-slide--feed">
+                <SmartFeed key={feedKey} />
+              </div>
             </div>
           </div>
-        </div>
+        )}
 
         {/* Bottom navigation bar */}
-        <BottomBar onCreateClick={() => setActiveTab(0)} />
+        <BottomBar
+          activeBar={activeBar}
+          onCreateClick={() => setActiveTab(TAB_UPLOAD)}
+          onDiscoverClick={() => setActiveTab(activeTab === TAB_SEARCH ? TAB_UPLOAD : TAB_SEARCH)}
+        />
       </div>
     </div>
   )

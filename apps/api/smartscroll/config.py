@@ -30,6 +30,9 @@ class Settings(BaseSettings):
     elevenlabs_api_key: str = ""
     elevenlabs_voice_id: str = ""
 
+    # Firebase Admin (base64-encoded service account JSON, or leave empty to use ADC)
+    firebase_admin_credentials_json: str = ""
+
     # Backboard
     backboard_key: str = ""
 

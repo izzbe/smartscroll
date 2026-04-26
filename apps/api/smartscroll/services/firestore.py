@@ -6,7 +6,7 @@ from functools import lru_cache
 
 from google.cloud import firestore
 
-from smartscroll.models.firestore import PDF, PDFStatus, User, Video
+from smartscroll.models.firestore import PDF, PDFStatus, Follow, User, Video
 
 
 class FirestoreService:
@@ -150,6 +150,75 @@ class FirestoreService:
                 }
             )
         )
+
+    async def list_videos_for_users(
+        self, uids: list[str], limit: int = 500
+    ) -> list[tuple[str, Video]]:
+        """Fetch videos belonging to any of the given UIDs (max 10 UIDs per Firestore IN query)."""
+        if not uids:
+            return []
+        # Firestore IN supports up to 10 values; slice defensively
+        chunk = uids[:10]
+        docs = await self._run_sync(
+            lambda: list(
+                self.db.collection("videos")
+                .where(filter=firestore.FieldFilter("uid", "in", chunk))
+                .order_by("created_at", direction=firestore.Query.DESCENDING)
+                .limit(limit)
+                .stream()
+            )
+        )
+        return [(doc.id, Video(**doc.to_dict())) for doc in docs]
+
+    async def list_all_users(self) -> list[tuple[str, User]]:
+        """Return all user documents as (uid, User) pairs."""
+        docs = await self._run_sync(
+            lambda: list(self.db.collection("users").stream())
+        )
+        return [(doc.id, User(**doc.to_dict())) for doc in docs]
+
+    # Follows
+
+    async def follow_user(self, follower_uid: str, following_uid: str) -> None:
+        """Create a follow relationship."""
+        doc_id = f"{follower_uid}_{following_uid}"
+        follow = Follow(follower_uid=follower_uid, following_uid=following_uid)
+        await self._run_sync(
+            lambda: self.db.collection("follows").document(doc_id).set(follow.model_dump())
+        )
+
+    async def unfollow_user(self, follower_uid: str, following_uid: str) -> None:
+        """Delete a follow relationship."""
+        doc_id = f"{follower_uid}_{following_uid}"
+        await self._run_sync(
+            lambda: self.db.collection("follows").document(doc_id).delete()
+        )
+
+    async def is_following(self, follower_uid: str, following_uid: str) -> bool:
+        """Check if follower_uid follows following_uid."""
+        doc_id = f"{follower_uid}_{following_uid}"
+        doc = await self._run_sync(
+            lambda: self.db.collection("follows").document(doc_id).get()
+        )
+        return doc.exists
+
+    async def get_following_uids(self, uid: str) -> list[str]:
+        """Return list of UIDs that uid is following."""
+        docs = await self._run_sync(
+            lambda: list(
+                self.db.collection("follows")
+                .where(filter=firestore.FieldFilter("follower_uid", "==", uid))
+                .stream()
+            )
+        )
+        return [doc.to_dict()["following_uid"] for doc in docs]
+
+    async def upsert_user(self, uid: str, email: str, display_name: str = "") -> User:
+        """Create user if not exists, otherwise return existing. Idempotent."""
+        existing = await self.get_user(uid)
+        if existing:
+            return existing
+        return await self.create_user(uid, email, display_name)
 
 
 @lru_cache

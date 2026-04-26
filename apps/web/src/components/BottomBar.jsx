@@ -1,14 +1,14 @@
 import './BottomBar.css'
 
-export default function BottomBar({ onCreateClick }) {
+export default function BottomBar({ onCreateClick, onDiscoverClick, activeBar }) {
   return (
     <nav className="bbar">
-      <button className="bbar-item">
+      <button className={`bbar-item ${activeBar === 'home' ? 'bbar-item--active' : ''}`} onClick={onCreateClick}>
         <HomeIcon />
         <span className="bbar-label">Home</span>
       </button>
 
-      <button className="bbar-item">
+      <button className={`bbar-item ${activeBar === 'discover' ? 'bbar-item--active' : ''}`} onClick={onDiscoverClick}>
         <DiscoverIcon />
         <span className="bbar-label">Discover</span>
       </button>

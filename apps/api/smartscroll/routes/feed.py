@@ -19,6 +19,8 @@ HALF_LIFE_SECONDS = 2 * 24 * 3600  # 2 days
 
 class FeedVideo(BaseModel):
     video_id: str
+    uid: str
+    display_name: str
     pdf_id: str
     pdf_filename: str
     video_gcs_path: str
@@ -44,7 +46,6 @@ def _recency_score(created_at: datetime, now: datetime) -> float:
     return math.exp(-math.log(2) * age_s / HALF_LIFE_SECONDS)
 
 
-
 def _encode_cursor(offset: int) -> str:
     return base64.urlsafe_b64encode(str(offset).encode()).decode()
 
@@ -63,12 +64,22 @@ async def get_feed(
     firestore: FirestoreService = Depends(get_firestore_service),
     storage: StorageService = Depends(get_storage_service),
 ) -> FeedResponse:
-    """Return a paginated, recency-scored feed of videos for the current user."""
-    all_videos = await firestore.list_videos_for_user(uid, limit=500)
+    """Return a paginated, recency-scored feed: current user's videos + followed users' videos."""
+    following_uids = await firestore.get_following_uids(uid)
+    all_uids = [uid] + following_uids
+
+    all_videos = await firestore.list_videos_for_users(all_uids, limit=500)
     ready_videos = [(vid_id, v) for vid_id, v in all_videos if v.video_gcs_path]
 
     if not ready_videos:
         return FeedResponse(videos=[], next_cursor=None)
+
+    # Resolve display names for unique uids in the result set
+    unique_uids = {v.uid for _, v in ready_videos}
+    display_names: dict[str, str] = {}
+    for user_uid in unique_uids:
+        user = await firestore.get_user(user_uid)
+        display_names[user_uid] = user.display_name if user else ""
 
     now = datetime.now(tz=timezone.utc)
     scored = [
@@ -89,6 +100,8 @@ async def get_feed(
         feed_items.append(
             FeedVideo(
                 video_id=vid_id,
+                uid=video.uid,
+                display_name=display_names.get(video.uid, ""),
                 pdf_id=video.pdf_id,
                 pdf_filename=video.pdf_filename,
                 video_gcs_path=video.video_gcs_path,

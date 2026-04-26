@@ -266,8 +266,18 @@ Use **uv** for Python (not pip, not poetry). Use **pnpm** for JS (not npm). Don'
 - [x] **Get PDF** — `GET /api/pdfs/{pdf_id}` returns single PDF with status
 - [x] **Chat / comment section** — `POST /api/chat/{pdf_id}` lets users ask Gemma questions about the PDF; uses raw extracted text as context; supports multi-turn via `history`
 
+### Completed (auth + social)
+- [x] **Firebase Auth** — `services/auth.py` verifies Firebase ID tokens via HTTPBearer; falls back to ADC if `FIREBASE_ADMIN_CREDENTIALS_JSON` is empty
+- [x] **User profiles** — `POST /api/users/me` upserts Firestore profile on login; `GET /api/users/me` returns current user
+- [x] **User discovery** — `GET /api/users` lists all users (excluding self) with `is_following` flag
+- [x] **Follow / unfollow** — `POST /api/users/{uid}/follow` and `DELETE /api/users/{uid}/follow`; stored in top-level `follows/` collection
+- [x] **Social feed** — feed endpoint merges current user's videos + followed users' videos, scored by recency; `display_name` included on each `FeedVideo`
+- [x] **Auth page** — Login + Register with email/password (Firebase Auth JS SDK); TikTok-styled dark UI
+- [x] **Discover tab** — Search/Discover page lists all users with Follow/Unfollow buttons; toggled via BottomBar Discover icon
+- [x] **Auth-gated app** — App.jsx wraps everything in `AuthProvider`; shows `AuthPage` when logged out, main app when logged in
+
 ### Not started
-- [ ] Frontend
+- [ ] Frontend (remaining features)
 
 ### Completed (services)
 - [x] **PDF text extraction** — `services/ingestion.py` extracts full text with PyMuPDF

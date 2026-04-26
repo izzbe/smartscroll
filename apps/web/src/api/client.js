@@ -118,6 +118,14 @@ export async function markMessageRead(messageId) {
   await fetch(`/api/messages/${messageId}/read`, { method: 'POST', headers })
 }
 
+export async function judgeAnswer(videoId, answer) {
+  return apiFetch(`/api/quiz/${videoId}/judge`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ answer }),
+  })
+}
+
 export async function unfollowUser(targetUid) {
   const headers = await authHeaders()
   const res = await fetch(`/api/users/${targetUid}/follow`, { method: 'DELETE', headers })

@@ -33,6 +33,14 @@ class PDF(BaseModel):
     error_message: str | None = None
 
 
+class QuizQuestion(BaseModel):
+    """A single multiple-choice quiz question."""
+
+    question: str
+    choices: list[str]   # exactly 4 options
+    correct_index: int   # 0–3
+
+
 class Video(BaseModel):
     """Video document - one video per PDF, denormalized for fast feed reads."""
 
@@ -47,6 +55,8 @@ class Video(BaseModel):
     extracted_text_gcs_path: str = ""
     video_caption: str = ""
     display_name: str = ""
+    quiz: list[dict] = []        # list of QuizQuestion dicts (MCQ)
+    free_response_question: dict = {}  # {"question": str, "rubric": list[str]}
     created_at: datetime = Field(default_factory=datetime.utcnow)
     view_count: int = 0
     total_watch_ms: int = 0

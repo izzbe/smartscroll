@@ -19,7 +19,7 @@ from smartscroll.services.firestore import FirestoreService, get_firestore_servi
 from smartscroll.services.ingestion import extract_full_pdf_text
 from smartscroll.services.storage import StorageService, get_storage_service
 from smartscroll.services.tts import TTSResult, generate_speech_with_timestamps
-from smartscroll.services.vertex import generate_video_caption, rewrite_pdf_to_script
+from smartscroll.services.vertex import generate_quiz, generate_video_caption, rewrite_pdf_to_script
 
 logger = structlog.get_logger()
 
@@ -211,8 +211,12 @@ async def process_pdf(
         )
         log.info("video_rendered", gcs_path=video_gcs_path)
 
-        # Step 7: Create video record in Firestore
-        log.info("step_7_creating_video_record")
+        # Step 7: Generate quiz questions from the script (non-blocking on failure)
+        log.info("step_7_generating_quiz")
+        quiz, free_response_question = await generate_quiz(script, pdf_id)
+
+        # Step 8: Create video record in Firestore
+        log.info("step_8_creating_video_record")
         video_id = uuid.uuid4().hex
         video = Video(
             uid=uid,
@@ -225,11 +229,13 @@ async def process_pdf(
             word_count=script_word_count,
             extracted_text_gcs_path=extracted_text_gcs_path,
             video_caption=video_caption,
+            quiz=quiz,
+            free_response_question=free_response_question,
         )
         await firestore.create_video(video_id, video)
         log.info("video_record_created", video_id=video_id)
 
-        # Step 8: Update PDF status to ready
+        # Step 9: Update PDF status to ready
         await firestore.update_pdf_status(uid, pdf_id, PDFStatus.READY)
         log.info("pipeline_completed", video_id=video_id)
 
@@ -324,7 +330,10 @@ async def process_topic(
         )
         log.info("video_rendered", gcs_path=video_gcs_path)
 
-        # Step 6: Create Firestore video record
+        # Step 6: Generate quiz
+        quiz, free_response_question = await generate_quiz(script, topic_id)
+
+        # Step 7: Create Firestore video record
         video_id = uuid.uuid4().hex
         video = Video(
             uid=uid,
@@ -337,6 +346,8 @@ async def process_topic(
             word_count=script_word_count,
             extracted_text_gcs_path=extracted_text_gcs_path,
             video_caption=video_caption,
+            quiz=quiz,
+            free_response_question=free_response_question,
         )
         await firestore.create_video(video_id, video)
 

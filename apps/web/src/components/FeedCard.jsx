@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect } from 'react'
 import CommentDrawer from './CommentDrawer'
 import ShareModal from './ShareModal'
+import QuizOverlay from './QuizOverlay'
 import './FeedCard.css'
 
 function fmt(n) {
@@ -38,11 +39,13 @@ function normalize(item) {
     displayName,
     avatarLetter:  displayName ? displayName[0].toUpperCase() : 'S',
     username:      displayName ? `@${displayName}` : '@smartscroll',
-    videoGcsPath:  item.video_gcs_path ?? '',
+    videoGcsPath:        item.video_gcs_path ?? '',
+    quiz:                item.quiz ?? [],
+    freeResponseQuestion: item.free_response_question ?? {},
   }
 }
 
-export default function FeedCard({ item: rawItem }) {
+export default function FeedCard({ item: rawItem, onQuizStart, onQuizEnd }) {
   const item = normalize(rawItem)
 
   const [liked,       setLiked]       = useState(false)
@@ -51,6 +54,7 @@ export default function FeedCard({ item: rawItem }) {
   const [saveCount,   setSaveCount]   = useState(item.saves)
   const [commentOpen, setCommentOpen] = useState(false)
   const [shareOpen,   setShareOpen]   = useState(false)
+  const [quizOpen,    setQuizOpen]    = useState(false)
   const [expanded,    setExpanded]    = useState(false)
   const [muted,       setMuted]       = useState(false)   // audio on by default
   const [playing,     setPlaying]     = useState(false)
@@ -130,6 +134,20 @@ export default function FeedCard({ item: rawItem }) {
     } catch (_) {}
   }
 
+  /* ── Quiz ── */
+
+  function handleVideoEnded() {
+    if (item.quiz && item.quiz.length > 0) {
+      setQuizOpen(true)
+      onQuizStart?.()
+    }
+  }
+
+  function handleQuizClose() {
+    setQuizOpen(false)
+    onQuizEnd?.()
+  }
+
   /* ── Like / save ── */
 
   function handleLike() {
@@ -163,9 +181,10 @@ export default function FeedCard({ item: rawItem }) {
             src={item.videoUrl}
             playsInline
             muted
-            loop
+            loop={item.quiz.length === 0}
             onPlay={() => setPlaying(true)}
             onPause={() => setPlaying(false)}
+            onEnded={handleVideoEnded}
             onTimeUpdate={() => {
               if (!isScrubbingRef.current)
                 setCurrentTime(videoRef.current?.currentTime ?? 0)
@@ -325,6 +344,14 @@ export default function FeedCard({ item: rawItem }) {
           videoCaption={item.topic}
           videoGcsPath={item.videoGcsPath}
           onClose={() => setShareOpen(false)}
+        />
+      )}
+      {quizOpen && (
+        <QuizOverlay
+          videoId={item.id}
+          questions={item.quiz}
+          freeResponseQuestion={item.freeResponseQuestion}
+          onClose={handleQuizClose}
         />
       )}
     </>

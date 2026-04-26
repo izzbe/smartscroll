@@ -414,6 +414,96 @@ async def generate_video_caption(script: str, pdf_id: str) -> str:
     return caption
 
 
+_QUIZ_SYSTEM = """\
+You are a quiz generator for short educational videos. Given a narration script, produce a quiz \
+with two parts.
+
+Output ONLY a valid JSON object with exactly two keys:
+
+"mcq": array of exactly 3 objects, each with:
+  - "question": string
+  - "choices": array of exactly 4 strings (no letter prefixes like A/B/C/D)
+  - "correct_index": integer 0–3
+
+"free_response": object with:
+  - "question": a single open-ended synthesis question requiring a 2–4 sentence answer
+  - "rubric": array of exactly 5 short criterion strings (each ≤ 15 words) that a good answer should cover
+
+No markdown, no code fences, no explanation — raw JSON object only.\
+"""
+
+_QUIZ_USER = "Script:\n{script}"
+
+
+async def generate_quiz(script: str, pdf_id: str) -> tuple[list[dict], dict]:
+    """Generate 3 MCQ questions + 1 free-response question from the video script.
+
+    Returns (mcq_questions, free_response_question).
+    mcq_questions: list of {question, choices, correct_index}
+    free_response_question: {question, rubric} or {} on failure.
+    Returns ([], {}) if generation fails — quiz is optional.
+    """
+    import json as _json
+    import re as _re
+
+    settings = get_settings()
+    log = logger.bind(pdf_id=pdf_id, step="quiz_gen")
+    log.info("generating_quiz")
+
+    prompt = f"{_QUIZ_SYSTEM}\n\n{_QUIZ_USER.format(script=script[:4000])}"
+
+    try:
+        endpoint_value = settings.vertex_gemma_endpoint or DEFAULT_GEMMA_MODEL
+        if _is_endpoint_id(endpoint_value):
+            raw = await _call_deployed_endpoint(prompt)
+        elif _is_maas_model(endpoint_value):
+            raw = await _call_maas_model(prompt, endpoint_value)
+        else:
+            raw = await _call_serverless_model(prompt)
+
+        raw = _re.sub(r"```(?:json)?\s*", "", raw).strip().rstrip("`").strip()
+
+        data = _json.loads(raw)
+        if not isinstance(data, dict):
+            raise ValueError("Expected a JSON object")
+
+        # Validate MCQ
+        validated_mcq = []
+        for q in (data.get("mcq") or [])[:3]:
+            if (
+                isinstance(q.get("question"), str)
+                and isinstance(q.get("choices"), list)
+                and len(q["choices"]) == 4
+                and isinstance(q.get("correct_index"), int)
+                and 0 <= q["correct_index"] <= 3
+            ):
+                validated_mcq.append({
+                    "question": q["question"],
+                    "choices": [str(c) for c in q["choices"]],
+                    "correct_index": q["correct_index"],
+                })
+
+        # Validate free-response
+        fr = data.get("free_response") or {}
+        validated_fr: dict = {}
+        if (
+            isinstance(fr.get("question"), str)
+            and isinstance(fr.get("rubric"), list)
+            and len(fr["rubric"]) == 5
+        ):
+            validated_fr = {
+                "question": fr["question"],
+                "rubric": [str(c) for c in fr["rubric"]],
+            }
+
+        log.info("quiz_generated", mcq_count=len(validated_mcq), has_fr=bool(validated_fr))
+        return validated_mcq, validated_fr
+
+    except Exception as e:
+        log.warning("quiz_generation_failed", error=str(e))
+        return [], {}
+
+
 async def check_vertex_connection() -> bool:
     """Check if Vertex AI is configured and accessible.
 

@@ -28,6 +28,8 @@ class FeedVideo(BaseModel):
     duration_ms: int
     video_caption: str
     script: str
+    quiz: list[dict] = []
+    free_response_question: dict = {}
     created_at: datetime
 
 
@@ -116,6 +118,8 @@ async def get_feed(
                 duration_ms=video.duration_ms,
                 video_caption=video.video_caption,
                 script=video.script,
+                quiz=video.quiz,
+                free_response_question=video.free_response_question,
                 created_at=video.created_at,
             )
         )

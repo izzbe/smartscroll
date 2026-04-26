@@ -109,6 +109,15 @@ class FirestoreService:
             lambda: self.db.collection("videos").document(video_id).set(video.model_dump())
         )
 
+    async def get_video(self, video_id: str) -> Video | None:
+        """Get a video document by its Firestore document ID."""
+        doc = await self._run_sync(
+            lambda: self.db.collection("videos").document(video_id).get()
+        )
+        if not doc.exists:
+            return None
+        return Video(**doc.to_dict())
+
     async def get_video_by_pdf_id(self, uid: str, pdf_id: str) -> tuple[str, Video] | None:
         """Get a video document by its source pdf_id."""
         # Single-field filter avoids needing a composite Firestore index.

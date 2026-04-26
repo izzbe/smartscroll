@@ -1,17 +1,19 @@
 """FastAPI application entry point."""
 
+import asyncio
 from contextlib import asynccontextmanager
 from typing import AsyncIterator
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from smartscroll.routes import chat, feed, health, pdfs
+from smartscroll.pipeline.render import warm_gameplay_cache
+from smartscroll.routes import chat, feed, health, pdfs, topics
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
-    """Application lifespan handler for startup/shutdown."""
+    asyncio.create_task(warm_gameplay_cache())
     yield
 
 
@@ -39,6 +41,7 @@ def create_app() -> FastAPI:
     app.include_router(pdfs.router, prefix="/api/pdfs", tags=["pdfs"])
     app.include_router(feed.router, prefix="/api/feed", tags=["feed"])
     app.include_router(chat.router, prefix="/api/chat", tags=["chat"])
+    app.include_router(topics.router, prefix="/api/topics", tags=["topics"])
 
     return app
 

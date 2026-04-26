@@ -1,5 +1,5 @@
 import { useState, useRef } from 'react'
-import { uploadPdf, getPdf } from '../api/client'
+import { uploadPdf, getPdf, generateFromTopic, getTopicStatus } from '../api/client'
 import './UploadPanel.css'
 
 export default function UploadPanel({ onGenerate }) {
@@ -52,10 +52,25 @@ export default function UploadPanel({ onGenerate }) {
         setLoadingMsg('')
       }
     } else {
-      // Text mode has no backend endpoint yet
-      await new Promise(r => setTimeout(r, 800))
-      setLoading(false)
-      onGenerate(null)
+      try {
+        setLoadingMsg('Researching your topic…')
+        const { topic_id } = await generateFromTopic(text.trim())
+
+        setLoadingMsg('Building your video… this may take a minute')
+        const deadline = Date.now() + 300_000
+        while (Date.now() < deadline) {
+          await new Promise(r => setTimeout(r, 3000))
+          const status = await getTopicStatus(topic_id)
+          if (status.status === 'ready') { onGenerate(topic_id); return }
+          if (status.status === 'failed') throw new Error(status.error_message || 'Processing failed')
+        }
+        throw new Error('Processing timed out — check back soon')
+      } catch (err) {
+        setError(err.message)
+      } finally {
+        setLoading(false)
+        setLoadingMsg('')
+      }
     }
   }
 
@@ -134,7 +149,7 @@ export default function UploadPanel({ onGenerate }) {
             className="up-textarea"
             value={text}
             onChange={(e) => setText(e.target.value)}
-            placeholder="Paste your notes here…"
+            placeholder="What do you want to learn about? (e.g., What is Redis?)"
           />
           <span className="up-char-count">{text.length.toLocaleString()} chars</span>
         </div>

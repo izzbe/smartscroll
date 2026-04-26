@@ -2,7 +2,7 @@
 .fc-card {
   position: relative;
   width: 100%;
-  height: 100%; /* fills one snap unit of the SmartFeed scroll container */
+  height: 100%;
   overflow: hidden;
   display: flex;
   align-items: flex-end;
@@ -19,11 +19,11 @@
   z-index: 0;
 }
 
-/* Mute / unmute button */
-.fc-mute-btn {
+/* ── Top-corner control buttons (mute + play/pause) ── */
+.fc-mute-btn,
+.fc-playpause-btn {
   position: absolute;
   top: 14px;
-  right: 14px;
   z-index: 4;
   background: rgba(0, 0, 0, 0.45);
   border: 1px solid rgba(255, 255, 255, 0.15);
@@ -40,11 +40,15 @@
   -webkit-tap-highlight-color: transparent;
 }
 
-.fc-mute-btn:active {
+.fc-mute-btn        { right: 14px; }
+.fc-playpause-btn   { left: 14px; }
+
+.fc-mute-btn:active,
+.fc-playpause-btn:active {
   background: rgba(0, 0, 0, 0.65);
 }
 
-/* Bottom-to-top dark fade so text stays readable */
+/* ── Bottom gradient overlay ── */
 .fc-overlay {
   position: absolute;
   inset: 0;
@@ -56,6 +60,7 @@
     rgba(0, 0, 0, 0.15) 100%
   );
   z-index: 1;
+  pointer-events: none;
 }
 
 /* ── Center brainrot subtitle ── */
@@ -156,11 +161,7 @@
   transform: scale(0.88);
 }
 
-/* Like pop animation */
-.fc-action--liked .fc-icon {
-  animation: fc-pop 0.22s ease;
-}
-
+.fc-action--liked .fc-icon,
 .fc-action--saved .fc-icon {
   animation: fc-pop 0.22s ease;
 }
@@ -198,6 +199,10 @@
   animation: fc-spin 5s linear infinite;
 }
 
+.fc-disc--paused {
+  animation-play-state: paused;
+}
+
 @keyframes fc-spin {
   to { transform: rotate(360deg); }
 }
@@ -206,7 +211,7 @@
 .fc-info {
   position: relative;
   z-index: 3;
-  padding: 0 68px 22px 14px;
+  padding: 0 68px 28px 14px;
   flex: 1;
   min-width: 0;
 }
@@ -299,4 +304,63 @@
   overflow: hidden;
   text-overflow: ellipsis;
   max-width: 210px;
+}
+
+/* ── Progress bar / scrubber ── */
+.fc-scrubber {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  z-index: 5;
+  height: 22px;
+  display: flex;
+  align-items: center;
+  padding: 0 2px;
+  cursor: pointer;
+  touch-action: none;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.fc-scrubber-track {
+  position: relative;
+  width: 100%;
+  height: 3px;
+  background: rgba(255, 255, 255, 0.28);
+  border-radius: 2px;
+  transition: height 0.12s ease;
+}
+
+.fc-scrubber:hover .fc-scrubber-track,
+.fc-scrubber:active .fc-scrubber-track {
+  height: 5px;
+}
+
+.fc-scrubber-fill {
+  position: absolute;
+  top: 0;
+  left: 0;
+  height: 100%;
+  background: #ee1d52;
+  border-radius: 2px;
+  pointer-events: none;
+}
+
+.fc-scrubber-thumb {
+  position: absolute;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  width: 14px;
+  height: 14px;
+  background: #fff;
+  border-radius: 50%;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.15s;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.5);
+}
+
+.fc-scrubber:hover .fc-scrubber-thumb,
+.fc-scrubber:active .fc-scrubber-thumb {
+  opacity: 1;
 }

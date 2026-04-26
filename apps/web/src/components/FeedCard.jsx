@@ -39,8 +39,9 @@ function normalize(item) {
     displayName,
     avatarLetter:  displayName ? displayName[0].toUpperCase() : 'S',
     username:      displayName ? `@${displayName}` : '@smartscroll',
-    videoGcsPath:  item.video_gcs_path ?? '',
-    quiz:          item.quiz ?? [],
+    videoGcsPath:        item.video_gcs_path ?? '',
+    quiz:                item.quiz ?? [],
+    freeResponseQuestion: item.free_response_question ?? {},
   }
 }
 
@@ -347,7 +348,9 @@ export default function FeedCard({ item: rawItem, onQuizStart, onQuizEnd }) {
       )}
       {quizOpen && (
         <QuizOverlay
+          videoId={item.id}
           questions={item.quiz}
+          freeResponseQuestion={item.freeResponseQuestion}
           onClose={handleQuizClose}
         />
       )}

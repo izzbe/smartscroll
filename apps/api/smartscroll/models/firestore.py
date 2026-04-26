@@ -55,7 +55,8 @@ class Video(BaseModel):
     extracted_text_gcs_path: str = ""
     video_caption: str = ""
     display_name: str = ""
-    quiz: list[dict] = []   # list of QuizQuestion dicts
+    quiz: list[dict] = []        # list of QuizQuestion dicts (MCQ)
+    free_response_question: dict = {}  # {"question": str, "rubric": list[str]}
     created_at: datetime = Field(default_factory=datetime.utcnow)
     view_count: int = 0
     total_watch_ms: int = 0

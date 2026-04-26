@@ -8,7 +8,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from smartscroll.pipeline.render import warm_gameplay_cache
-from smartscroll.routes import chat, feed, health, messages, pdfs, topics, users
+from smartscroll.routes import chat, feed, health, messages, pdfs, quiz, topics, users
 
 
 @asynccontextmanager
@@ -44,6 +44,7 @@ def create_app() -> FastAPI:
     app.include_router(topics.router, prefix="/api/topics", tags=["topics"])
     app.include_router(users.router, prefix="/api/users", tags=["users"])
     app.include_router(messages.router, prefix="/api/messages", tags=["messages"])
+    app.include_router(quiz.router, prefix="/api/quiz", tags=["quiz"])
 
     return app
 

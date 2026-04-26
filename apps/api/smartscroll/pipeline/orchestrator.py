@@ -213,7 +213,7 @@ async def process_pdf(
 
         # Step 7: Generate quiz questions from the script (non-blocking on failure)
         log.info("step_7_generating_quiz")
-        quiz = await generate_quiz(script, pdf_id)
+        quiz, free_response_question = await generate_quiz(script, pdf_id)
 
         # Step 8: Create video record in Firestore
         log.info("step_8_creating_video_record")
@@ -230,6 +230,7 @@ async def process_pdf(
             extracted_text_gcs_path=extracted_text_gcs_path,
             video_caption=video_caption,
             quiz=quiz,
+            free_response_question=free_response_question,
         )
         await firestore.create_video(video_id, video)
         log.info("video_record_created", video_id=video_id)
@@ -330,7 +331,7 @@ async def process_topic(
         log.info("video_rendered", gcs_path=video_gcs_path)
 
         # Step 6: Generate quiz
-        quiz = await generate_quiz(script, topic_id)
+        quiz, free_response_question = await generate_quiz(script, topic_id)
 
         # Step 7: Create Firestore video record
         video_id = uuid.uuid4().hex
@@ -346,6 +347,7 @@ async def process_topic(
             extracted_text_gcs_path=extracted_text_gcs_path,
             video_caption=video_caption,
             quiz=quiz,
+            free_response_question=free_response_question,
         )
         await firestore.create_video(video_id, video)
 

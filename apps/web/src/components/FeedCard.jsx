@@ -9,7 +9,6 @@ function fmt(n) {
   return n.toLocaleString()
 }
 
-// Split a script into [hook sentence, remaining excerpt]
 function splitScript(script) {
   if (!script) return ['', '']
   const sentences = script.match(/[^.!?]+[.!?]+/g) ?? []
@@ -19,7 +18,6 @@ function splitScript(script) {
   return [hook, rest]
 }
 
-// Normalize both real API shape and legacy mock shape into one interface
 function normalize(item) {
   const [scriptHook, scriptRest] = splitScript(item.script ?? '')
   return {
@@ -41,16 +39,22 @@ function normalize(item) {
 export default function FeedCard({ item: rawItem }) {
   const item = normalize(rawItem)
 
-  const [liked,    setLiked]    = useState(false)
-  const [likeCount, setLikeCount] = useState(item.likes)
-  const [saved,    setSaved]    = useState(false)
-  const [saveCount, setSaveCount] = useState(item.saves)
+  const [liked,       setLiked]       = useState(false)
+  const [likeCount,   setLikeCount]   = useState(item.likes)
+  const [saved,       setSaved]       = useState(false)
+  const [saveCount,   setSaveCount]   = useState(item.saves)
   const [commentOpen, setCommentOpen] = useState(false)
-  const [expanded, setExpanded] = useState(false)
-  const [muted, setMuted] = useState(true)
-  const videoRef = useRef(null)
+  const [expanded,    setExpanded]    = useState(false)
+  const [muted,       setMuted]       = useState(false)   // audio on by default
+  const [playing,     setPlaying]     = useState(false)
+  const [currentTime, setCurrentTime] = useState(0)
+  const [duration,    setDuration]    = useState(0)
 
-  // Play/pause video based on visibility
+  const videoRef       = useRef(null)
+  const progressRef    = useRef(null)
+  const isScrubbingRef = useRef(false)
+
+  // Auto-play / pause based on viewport visibility
   useEffect(() => {
     if (!videoRef.current) return
     const observer = new IntersectionObserver(
@@ -72,6 +76,55 @@ export default function FeedCard({ item: rawItem }) {
     if (videoRef.current) videoRef.current.muted = muted
   }, [muted])
 
+  /* ── Playback ── */
+
+  function togglePlayPause() {
+    const v = videoRef.current
+    if (!v) return
+    v.paused ? v.play().catch(() => {}) : v.pause()
+  }
+
+  /* ── Scrubber ── */
+
+  function handleScrubStart(e) {
+    isScrubbingRef.current = true
+    e.currentTarget.setPointerCapture(e.pointerId)
+    doSeek(e)
+  }
+
+  function handleScrubMove(e) {
+    if (!isScrubbingRef.current) return
+    doSeek(e)
+  }
+
+  function handleScrubEnd() {
+    isScrubbingRef.current = false
+  }
+
+  function doSeek(e) {
+    const el = progressRef.current
+    const v  = videoRef.current
+    if (!el || !v || !duration) return
+    const rect  = el.getBoundingClientRect()
+    const ratio = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width))
+    v.currentTime = ratio * duration
+    setCurrentTime(v.currentTime)
+  }
+
+  /* ── Fullscreen ── */
+
+  async function toggleFullscreen() {
+    try {
+      if (!document.fullscreenElement) {
+        await cardRef.current?.requestFullscreen?.()
+      } else {
+        await document.exitFullscreen?.()
+      }
+    } catch (_) {}
+  }
+
+  /* ── Like / save ── */
+
   function handleLike() {
     const next = !liked
     setLiked(next)
@@ -84,8 +137,9 @@ export default function FeedCard({ item: rawItem }) {
     setSaveCount(c => next ? c + 1 : c - 1)
   }
 
+  const pct          = duration ? (currentTime / duration) * 100 : 0
   const captionLimit = 90
-  const isLong = item.caption.length > captionLimit
+  const isLong       = item.caption.length > captionLimit
 
   return (
     <>
@@ -94,7 +148,7 @@ export default function FeedCard({ item: rawItem }) {
         style={item.videoUrl ? { background: '#000' } : { background: item.gradient }}
       >
 
-        {/* Background video (real content) */}
+        {/* Background video */}
         {item.videoUrl && (
           <video
             ref={videoRef}
@@ -103,10 +157,17 @@ export default function FeedCard({ item: rawItem }) {
             playsInline
             muted
             loop
+            onPlay={() => setPlaying(true)}
+            onPause={() => setPlaying(false)}
+            onTimeUpdate={() => {
+              if (!isScrubbingRef.current)
+                setCurrentTime(videoRef.current?.currentTime ?? 0)
+            }}
+            onLoadedMetadata={() => setDuration(videoRef.current?.duration ?? 0)}
           />
         )}
 
-        {/* Mute / unmute toggle — top-right */}
+        {/* Mute / unmute — top-right */}
         {item.videoUrl && (
           <button
             className="fc-mute-btn"
@@ -117,10 +178,21 @@ export default function FeedCard({ item: rawItem }) {
           </button>
         )}
 
+        {/* Play / pause — top-left */}
+        {item.videoUrl && (
+          <button
+            className="fc-playpause-btn"
+            onClick={togglePlayPause}
+            aria-label={playing ? 'Pause' : 'Play'}
+          >
+            {playing ? <PauseIcon /> : <PlayIcon />}
+          </button>
+        )}
+
         {/* Bottom gradient overlay */}
         <div className="fc-overlay" />
 
-        {/* Brainrot subtitle (center) — only for mock data; real videos have burned-in captions */}
+        {/* Brainrot subtitle — only for mock data */}
         {item.subtitle && !item.videoUrl && (
           <div className="fc-subtitle-zone">
             <p className="fc-subtitle">{item.subtitle}</p>
@@ -167,7 +239,7 @@ export default function FeedCard({ item: rawItem }) {
             <span className="fc-count">{fmt(item.shares)}</span>
           </button>
 
-          <div className="fc-disc" aria-hidden>
+          <div className={`fc-disc ${!playing ? 'fc-disc--paused' : ''}`} aria-hidden>
             <MusicIcon />
           </div>
         </aside>
@@ -211,6 +283,23 @@ export default function FeedCard({ item: rawItem }) {
           </div>
         </div>
 
+        {/* Progress bar / scrubber */}
+        {item.videoUrl && (
+          <div
+            ref={progressRef}
+            className="fc-scrubber"
+            onPointerDown={handleScrubStart}
+            onPointerMove={handleScrubMove}
+            onPointerUp={handleScrubEnd}
+            onPointerCancel={handleScrubEnd}
+          >
+            <div className="fc-scrubber-track">
+              <div className="fc-scrubber-fill" style={{ width: `${pct}%` }} />
+              <div className="fc-scrubber-thumb" style={{ left: `${pct}%` }} />
+            </div>
+          </div>
+        )}
+
       </div>
 
       {commentOpen && (
@@ -224,7 +313,7 @@ export default function FeedCard({ item: rawItem }) {
   )
 }
 
-/* SVG icon components */
+/* ── SVG icons ── */
 
 function HeartIcon({ filled }) {
   return (
@@ -310,3 +399,22 @@ function UnmutedIcon() {
     </svg>
   )
 }
+
+function PlayIcon() {
+  return (
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="#fff">
+      <polygon points="5 3 19 12 5 21 5 3" />
+    </svg>
+  )
+}
+
+function PauseIcon() {
+  return (
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="#fff">
+      <rect x="6" y="4" width="4" height="16" rx="1" />
+      <rect x="14" y="4" width="4" height="16" rx="1" />
+    </svg>
+  )
+}
+
+

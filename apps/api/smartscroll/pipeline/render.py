@@ -18,6 +18,10 @@ WORDS_PER_CAPTION = 5
 OUTPUT_WIDTH = 1080
 OUTPUT_HEIGHT = 1920
 
+# Local cache directory — clips downloaded here once and reused across renders.
+# Parents[4] walks up: pipeline/ -> smartscroll/ -> api/ -> apps/ -> repo root
+GAMEPLAY_CACHE_DIR = Path(__file__).resolve().parents[4] / "gameplay_clips"
+
 
 def _seconds_to_ass_ts(seconds: float) -> str:
     h = int(seconds // 3600)
@@ -94,6 +98,37 @@ def _download_blob(client: gcs.Client, bucket_name: str, blob_name: str, local_p
     client.bucket(bucket_name).blob(blob_name).download_to_filename(str(local_path))
 
 
+async def warm_gameplay_cache() -> None:
+    """Download all gameplay clips from GCS to the local cache directory.
+
+    Called once on server startup. Skips clips that are already cached.
+    Subsequent renders use the local files — no GCS download per render.
+    """
+    settings = get_settings()
+    client = gcs.Client()
+    loop = asyncio.get_event_loop()
+    GAMEPLAY_CACHE_DIR.mkdir(parents=True, exist_ok=True)
+
+    log = logger.bind(cache_dir=str(GAMEPLAY_CACHE_DIR))
+    blobs = await loop.run_in_executor(
+        None, lambda: list(client.list_blobs(settings.gcs_bucket_gameplay))
+    )
+    if not blobs:
+        log.warning("gameplay_cache_no_clips_in_bucket")
+        return
+
+    for blob in blobs:
+        dest = GAMEPLAY_CACHE_DIR / blob.name
+        if dest.exists():
+            log.info("gameplay_cache_already_exists", clip=blob.name)
+            continue
+        log.info("gameplay_cache_downloading", clip=blob.name, size_mb=round((blob.size or 0) / 1e6, 1))
+        await loop.run_in_executor(None, lambda b=blob, d=dest: b.download_to_filename(str(d)))
+        log.info("gameplay_cache_saved", clip=blob.name)
+
+    log.info("gameplay_cache_ready", clips=len(blobs))
+
+
 def _upload_video(client: gcs.Client, bucket_name: str, local_path: Path, blob_path: str) -> str:
     blob = client.bucket(bucket_name).blob(blob_path)
     blob.upload_from_filename(str(local_path), content_type="video/mp4")
@@ -122,8 +157,8 @@ def _run_ffmpeg(
         audio.audio,
         str(output_path),
         vcodec="libx264",
-        preset="fast",
-        crf=23,
+        preset="ultrafast",
+        crf=28,
         acodec="aac",
         audio_bitrate="192k",
     )
@@ -161,11 +196,17 @@ async def render_video(
         clip_name = await loop.run_in_executor(
             None, _pick_clip_name, client, settings.gcs_bucket_gameplay, pdf_id
         )
-        gameplay_path = tmp / "gameplay.mp4"
-        log.info("render_downloading_clip", clip=clip_name)
-        await loop.run_in_executor(
-            None, _download_blob, client, settings.gcs_bucket_gameplay, clip_name, gameplay_path
-        )
+
+        cached_clip = GAMEPLAY_CACHE_DIR / clip_name
+        if cached_clip.exists():
+            gameplay_path = cached_clip
+            log.info("render_clip_cache_hit", clip=clip_name)
+        else:
+            gameplay_path = tmp / "gameplay.mp4"
+            log.info("render_downloading_clip", clip=clip_name)
+            await loop.run_in_executor(
+                None, _download_blob, client, settings.gcs_bucket_gameplay, clip_name, gameplay_path
+            )
 
         narration_path = tmp / "narration.mp3"
         narration_path.write_bytes(narration_audio)

@@ -250,6 +250,121 @@ async def process_pdf(
         raise
 
 
+async def process_topic(
+    uid: str,
+    topic_id: str,
+    topic: str,
+    firestore: FirestoreService | None = None,
+    storage: StorageService | None = None,
+) -> PipelineResult:
+    """Full pipeline: topic → Backboard research → Gemma script → TTS → video.
+
+    Identical to process_pdf from step 3 onward; steps 1-2 are replaced by a
+    Backboard API call that returns a research article for the given topic.
+    """
+    from smartscroll.services.backboard import research_topic
+
+    firestore = firestore or get_firestore_service()
+    storage = storage or get_storage_service()
+
+    log = logger.bind(uid=uid, topic_id=topic_id, topic=topic[:80])
+    log.info("topic_pipeline_started")
+
+    try:
+        await firestore.update_pdf_status(uid, topic_id, PDFStatus.PROCESSING)
+
+        # Step 1: Research via Backboard (replaces PDF download + text extraction)
+        log.info("step_1_researching_topic")
+        research_text = await research_topic(topic)
+        log.info("topic_researched", word_count=len(research_text.split()))
+
+        # Step 1b: Upload research text to GCS (used as chat context + audit trail)
+        text_path = f"{uid}/{topic_id}/extracted_text.txt"
+        extracted_text_gcs_path = await upload_text_to_gcs(storage, research_text, text_path)
+
+        # Step 2: Generate Gemma script from research text
+        log.info("step_2_generating_script")
+        script, prompt_version = await rewrite_pdf_to_script(research_text, topic_id)
+        script_word_count = len(script.split())
+        log.info("script_generated", word_count=script_word_count, prompt_version=prompt_version)
+
+        # Step 2b: Generate short title caption
+        log.info("step_2b_generating_caption")
+        video_caption = await generate_video_caption(script, topic_id)
+        log.info("caption_generated", caption=video_caption)
+
+        # Step 3: TTS
+        log.info("step_3_generating_tts")
+        tts_result: TTSResult = await generate_speech_with_timestamps(script)
+        log.info("tts_generated", duration_ms=tts_result.duration_ms)
+
+        # Step 4: Upload narration
+        audio_path = f"{uid}/{topic_id}/narration.mp3"
+        narration_gcs_path = await upload_audio_to_gcs(storage, tts_result.audio, audio_path)
+
+        # Step 4b: Upload word timings
+        timings_data = [
+            {"word": t.word, "start": t.start_time, "end": t.end_time}
+            for t in tts_result.word_timings
+        ]
+        await upload_text_to_gcs(storage, json.dumps(timings_data), f"{uid}/{topic_id}/timings.json")
+
+        # Step 5: Render video
+        log.info("step_5_rendering_video")
+        video_gcs_path = await render_video(
+            uid=uid,
+            pdf_id=topic_id,
+            narration_audio=tts_result.audio,
+            word_timings=tts_result.word_timings,
+            duration_ms=tts_result.duration_ms,
+        )
+        log.info("video_rendered", gcs_path=video_gcs_path)
+
+        # Step 6: Create Firestore video record
+        video_id = uuid.uuid4().hex
+        video = Video(
+            uid=uid,
+            pdf_id=topic_id,
+            pdf_filename=f"{topic[:80]}.topic",
+            video_gcs_path=video_gcs_path,
+            duration_ms=tts_result.duration_ms,
+            script=script,
+            script_prompt_version=prompt_version,
+            word_count=script_word_count,
+            extracted_text_gcs_path=extracted_text_gcs_path,
+            video_caption=video_caption,
+        )
+        await firestore.create_video(video_id, video)
+
+        # Step 7: Mark as ready
+        await firestore.update_pdf_status(uid, topic_id, PDFStatus.READY)
+        log.info("topic_pipeline_completed", video_id=video_id)
+
+        return PipelineResult(
+            pdf_id=topic_id,
+            video_id=video_id,
+            script=script,
+            script_prompt_version=prompt_version,
+            word_count=script_word_count,
+            duration_ms=tts_result.duration_ms,
+            narration_gcs_path=narration_gcs_path,
+            video_gcs_path=video_gcs_path,
+        )
+
+    except Exception as e:
+        log.error("topic_pipeline_failed", error=str(e))
+        await firestore.update_pdf_status(uid, topic_id, PDFStatus.FAILED, error_message=str(e))
+        raise
+
+
+async def process_topic_background(uid: str, topic_id: str, topic: str) -> None:
+    """Background task wrapper for process_topic."""
+    try:
+        await process_topic(uid, topic_id, topic)
+    except Exception as e:
+        logger.error("background_topic_pipeline_failed", uid=uid, topic_id=topic_id, error=str(e))
+
+
 async def process_pdf_background(
     uid: str,
     pdf_id: str,

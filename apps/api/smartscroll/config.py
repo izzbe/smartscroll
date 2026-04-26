@@ -30,6 +30,9 @@ class Settings(BaseSettings):
     elevenlabs_api_key: str = ""
     elevenlabs_voice_id: str = ""
 
+    # Backboard
+    backboard_key: str = ""
+
     # App settings
     debug: bool = False
     log_level: str = "INFO"

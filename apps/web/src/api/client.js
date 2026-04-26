@@ -24,6 +24,25 @@ export async function getFeed(cursor) {
   return res.json()
 }
 
+export async function generateFromTopic(topic) {
+  const res = await fetch('/api/topics/generate', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ topic }),
+  })
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({ detail: res.statusText }))
+    throw new Error(body.detail || 'Failed to start topic research')
+  }
+  return res.json()  // { topic_id, uid, status }
+}
+
+export async function getTopicStatus(topicId) {
+  const res = await fetch(`/api/topics/${topicId}`)
+  if (!res.ok) throw new Error('Failed to get topic status')
+  return res.json()  // { topic_id, topic, status, error_message }
+}
+
 export async function sendChat(pdfId, message, history) {
   const res = await fetch(`/api/chat/${pdfId}`, {
     method: 'POST',

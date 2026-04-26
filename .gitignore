@@ -17,3 +17,6 @@ gcp-sa.json
 temp
 output
 TikTok_Sans.zip
+
+# locally cached gameplay clips (large binaries, downloaded from GCS on startup)
+gameplay_clips/
